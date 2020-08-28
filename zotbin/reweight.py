@@ -1,3 +1,5 @@
+import functools
+
 import numpy as np
 
 import jax
@@ -42,11 +44,13 @@ def init_reweighting(probes, cl):
     return ngals, noise, cl_in
 
 
+# This is currently several times slower than reweight_cl so needs more tuning.
+@functools.partial(jax.jit, static_argnums=(1, 4))
 def reweight_noise_cl(weights, gals_per_arcmin2, ngals, noise, nell):
     """
     """
-    assert len(weights) == len(noise)
-    nprobe = len(weights)
+    #assert len(weights) == len(noise)
+    nprobe = weights.shape[0]
     noise_out = []
     ntracers = 0
     for i in range(nprobe):
@@ -54,13 +58,14 @@ def reweight_noise_cl(weights, gals_per_arcmin2, ngals, noise, nell):
         noise_inv_out = gals_per_arcmin2 * weights[i].dot(noise_inv_in)
         noise_out.append(1 / noise_inv_out)
         ntracers += len(noise_inv_out)
-    noise = jnp.array(np.concatenate(noise_out))
+    noise = jnp.concatenate(noise_out)
 
     # Define an ordering for the blocks of the signal vector
     cl_index = []
     for i in range(ntracers):
         for j in range(i, ntracers):
             cl_index.append((i, j))
+    cl_index = jnp.array(cl_index)
 
     # Only include a noise contribution for the auto-spectra
     def get_noise_cl(inds):
@@ -68,7 +73,7 @@ def reweight_noise_cl(weights, gals_per_arcmin2, ngals, noise, nell):
         delta = 1.0 - jnp.clip(jnp.abs(i - j), 0.0, 1.0)
         return noise[i] * delta * jnp.ones(nell)
 
-    return jax.lax.map(get_noise_cl, jnp.array(cl_index)), cl_index
+    return jax.lax.map(get_noise_cl, cl_index), cl_index
 
 
 @jax.jit
@@ -134,11 +139,13 @@ def reweighted_metrics(weights, ell, ngals, noise, cl_in, gals_per_arcmin2, fsky
     nell = len(ell)
     cl_out = reweight_cl(weights, ngals, cl_in)
     nl_out, cl_index = reweight_noise_cl(weights, gals_per_arcmin2, ngals, noise, nell)
-    cov_out = reweighted_cov(cl_out, nl_out, cl_index, ell, fsky)
+    cov_out = reweighted_cov(cl_out[-1], nl_out, cl_index, ell, fsky)
 
     # Calculate SNR2 = mu^t . Cinv . mu
     cinv = sparse.inv(cov_out)
     mu = cl_out.reshape(-1, 1)
     snr = jnp.sqrt(sparse.dot(mu.T, cinv, mu)[0, 0])
+
+    # Calculate FoM
 
     return {'SNR_3x2': snr}
