@@ -31,29 +31,6 @@ class bin_nz(jc.redshift.redshift_distribution):
         return jnp.maximum(0., jnp.sign((z - zlo) * (zhi - z)) / (zhi - zlo))
 
 
-def get_bin_probes(zedges, what='3x2', sigma_e=0.26, linear_bias=1., gals_per_arcmin2=1.):
-
-    nzbins = len(zedges) - 1
-    zbins = []
-    for i in range(nzbins):
-        zbin = bin_nz(
-            zedges[i], zedges[i + 1],
-            gals_per_arcmin2=gals_per_arcmin2, zmax=zedges[-1])
-        zbins.append(zbin)
-
-    probes = []
-    # start with number counts
-    if (what == 'gg' or what == '3x2'):
-        # Define a bias parameterization
-        bias = jc.bias.inverse_growth_linear_bias(linear_bias)
-        probes.append(jc.probes.NumberCounts(zbins, bias))
-
-    if (what == 'ww' or what == '3x2'):
-        probes.append(jc.probes.WeakLensing(zbins, sigma_e=sigma_e))
-
-    return probes
-
-
 def one_density_kernel(self, cosmo, z, ell, s=slice(None)):
     z = jnp.atleast_1d(z)
     # Extract parameters
