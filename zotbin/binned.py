@@ -138,4 +138,5 @@ def get_binned_scores(idx, z, zedges, ell, ngals, noise, cl_in, gals_per_arcmin2
     """
     """
     weights = get_binned_weights(zedges, z, idx)
-    return reweighted_metrics(weights, ell, ngals, noise, cl_in, gals_per_arcmin2, fsky)
+    return zotbin.reweight.reweighted_metrics(
+        weights, ell, ngals, noise, cl_in, gals_per_arcmin2, fsky)
