@@ -113,7 +113,7 @@ def load_binned(name):
             cl_in.append([])
             for j in range(i + 1):
                 cl_in[-1].append(keys[f'cl_{i}_{j}'])
-    return zedges, ngals, noise, cl_in
+    return zedges, ell, ngals, noise, cl_in
 
 
 def get_binned_weights(zedges, z, idx):
