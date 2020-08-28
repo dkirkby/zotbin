@@ -71,11 +71,12 @@ def reweight_noise_cl(weights, gals_per_arcmin2, ngals, noise, nell):
     return jax.lax.map(get_noise_cl, jnp.array(cl_index)), cl_index
 
 
+@jax.jit
 def reweight_cl(weights, ngals, cl_in):
     """
     """
-    assert len(weights) == len(ngals)
-    nprobe = len(weights)
+    # assert len(weights) == len(ngals)
+    nprobe = weights.shape[0]
     offset = 0
     w = [None] * nprobe
     nzbin = np.array([len(W) for W in weights])
@@ -85,16 +86,16 @@ def reweight_cl(weights, ngals, cl_in):
         nrow = len(weights[i1])
         rowstep = nprobe - i1
         for i2 in range(i1, nprobe):
-            assert weights[i2].shape[1] == len(ngals[i2])
+            #assert weights[i2].shape[1] == len(ngals[i2])
             W = weights[i2] * ngals[i2]
-            W = W / np.sum(W, axis=1, keepdims=True)
+            W /= jnp.sum(W, axis=1, keepdims=True)
             w[i2] = W
-            cl = np.einsum('ip,pqk,jq->ijk', w[i1], cl_in[i2][i1], w[i2])
+            cl = jnp.einsum('ip,spqk,jq->sijk', w[i1], cl_in[i2][i1], w[i2])
             for j in range(nrow):
                 start = j if i1 == i2 else 0
-                cl_out[offset + j * rowstep + i2 - i1] = cl[j, start:]
+                cl_out[offset + j * rowstep + i2 - i1] = cl[:, j, start:]
         offset += nrow * rowstep
-    return jnp.array(np.concatenate(cl_out, axis=0))
+    return jnp.concatenate(cl_out, axis=1)
 
 
 def reweighted_cov(cl_out, nl_out, cl_index, ell, fsky=0.25):

@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import jax
+import jax.numpy as jnp
 
 import jax_cosmo.bias
 import jax_cosmo.probes
@@ -103,16 +104,16 @@ def save_binned(name, zedges, ell, ngals, noise, cl_in):
 
 def load_binned(name):
     with np.load(name) as keys:
-        zedges = keys['zedges']
-        ell = keys['ell']
-        ngals = keys['ngals']
-        noise = keys['noise']
+        zedges = jnp.array(keys['zedges'])
+        ell = jnp.array(keys['ell'])
+        ngals = jnp.array(keys['ngals'])
+        noise = jnp.array(keys['noise'])
         nprobe = len(ngals)
         cl_in = []
         for i in range(nprobe):
             cl_in.append([])
             for j in range(i + 1):
-                cl_in[-1].append(keys[f'cl_{i}_{j}'])
+                cl_in[-1].append(jnp.array(keys[f'cl_{i}_{j}']))
     return zedges, ell, ngals, noise, cl_in
 
 
