@@ -68,27 +68,28 @@ def get_bin_probes(zedges, what='3x2', sigma_e=0.26, linear_bias=1., gals_per_ar
     return probes
 
 
-def init_binned_cl(zedges, ell, Omega_c=0.27, sigma8=0.8404844953840714, w0=-1., wa=0., what='3x2', sigma_e=0.26, linear_bias=1., nagrid=1024):
+def init_binned_cl(zedges, ell, what='3x2', sigma_e=0.26, linear_bias=1., nagrid=1024):
     """
     """
     probes = get_bin_probes(zedges, what, sigma_e, linear_bias, gals_per_arcmin2=1.)
     def get_cl(p0, p1, p2, p3):
         model = jax_cosmo.core.Cosmology(
             Omega_c = p0,
-            Omega_b = 0.045,
-            h = 0.67,
-            n_s = 0.96,
-            sigma8 = p1,
+            Omega_b = p1,
+            h = p2,
+            n_s = p3,
+            sigma8 = p4,
             Omega_k=0.,
-            w0=p2,
-            wa=p3)
+            w0=p5,
+            wa=p6)
         return zotbin.jaxcosmo.new_angular_cl(model, ell, probes, nagrid)
     cl = []
-    for i in range(4):
+    fiducial = [0.27, 0.045, 0.67, 0.96, 0.840484495, -1.0, 0.0]
+    for i in range(7):
         get_cl_grad = jax.jacfwd(get_cl, i)
-        cl.append(get_cl_grad(Omega_c, sigma8, w0, wa))
+        cl.append(get_cl_grad(*fiducial))
         print(i, cl[-1].shape)
-    cl.append(get_cl(Omega_c, sigma8, w0, wa))
+    cl.append(get_cl(*fiducial))
     print(cl[-1].shape)
     return zotbin.reweight.init_reweighting(probes, cl)
 
