@@ -5,6 +5,7 @@ import jax.numpy as jnp
 
 import jax_cosmo.background
 import jax_cosmo.power
+import jax_cosmo.redshift
 import jax_cosmo.transfer
 import jax_cosmo.utils
 import jax_cosmo.constants
@@ -12,7 +13,7 @@ import jax_cosmo.probes
 
 
 @jax.tree_util.register_pytree_node_class
-class bin_nz(jc.redshift.redshift_distribution):
+class bin_nz(jax_cosmo.redshift.redshift_distribution):
     """Defines a bin of constant dn/dz
     """
     def __init__(self, zlo, zhi, gals_per_arcmin2, zmax):

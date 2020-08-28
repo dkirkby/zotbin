@@ -8,13 +8,13 @@ import jax_cosmo.probes
 import jax_cosmo.core
 
 import zotbin.jaxcosmo
+import zotbin.reweight
 
 
 def get_zedges(z, frac=0.02, damin=0.025, damax=0.028, plot=False):
     zsorted = np.sort(z)
     asorted = 1 / (zsorted + 1)
     nfrac = int(np.round(frac * len(z)))
-    print(nfrac)
     hi = 0
     zedges = [zsorted[0]]
     last = len(z) - 1
@@ -27,17 +27,12 @@ def get_zedges(z, frac=0.02, damin=0.025, damax=0.028, plot=False):
             hi -= 1
         zedges.append(zsorted[hi])
     if (asorted[lo] < asorted[hi] + damin) or (hi - lo + 1 < nfrac):
-        print('Merging last bin')
+        # Merge last bin.
         zedges[-2] = zedges[-1]
         zedges = zedges[:-1]
     zedges = np.array(zedges)
-    print(len(zedges))
-
+    print(f'Selected {len(zedges)} edges.')
     aedges = 1 / (1 + zedges[::-1])
-    damin = np.min(np.diff(aedges))
-    da_int = (aedges[-1] - aedges[0]) / 512
-    print(damin, da_int, damin / da_int)
-
     if plot:
         fig, ax = plt.subplots(1, 2, figsize=(12, 5))
         ax[0].hist(z, range=(zsorted[0], zsorted[-1]), bins=500, alpha=0.5)
@@ -46,7 +41,6 @@ def get_zedges(z, frac=0.02, damin=0.025, damax=0.028, plot=False):
             ax[0].axvline(ze, color='k', lw=1)
         for ae in aedges:
             ax[1].axvline(ae, color='k', lw=1)
-
     return zedges
 
 
@@ -73,7 +67,7 @@ def get_bin_probes(zedges, what='3x2', sigma_e=0.26, linear_bias=1., gals_per_ar
     return probes
 
 
-def init_binned_cl(zedges, Omega_c=0.27, sigma8=0.8404844953840714, w0=-1., wa=0., what='3x2', sigma_e=0.26, linear_bias=1., nagrid=1024):
+def init_binned_cl(zedges, ell, Omega_c=0.27, sigma8=0.8404844953840714, w0=-1., wa=0., what='3x2', sigma_e=0.26, linear_bias=1., nagrid=1024):
     """
     """
     probes = get_bin_probes(zedges, what, sigma_e, linear_bias, gals_per_arcmin2=1.)
@@ -87,7 +81,7 @@ def init_binned_cl(zedges, Omega_c=0.27, sigma8=0.8404844953840714, w0=-1., wa=0
             Omega_k=0.,
             w0=p2,
             wa=p3)
-        return new_angular_cl(model, ell, probes, nagrid)
+        return zotbin.jaxcosmo.new_angular_cl(model, ell, probes, nagrid)
     cl = []
     for i in range(4):
         get_cl_grad = jax.jacfwd(get_cl, i)
@@ -98,8 +92,8 @@ def init_binned_cl(zedges, Omega_c=0.27, sigma8=0.8404844953840714, w0=-1., wa=0
     return zotbin.reweight.init_reweighting(probes, cl)
 
 
-def save_binned(name, zedges, ngals, noise, cl_in):
-    keys = dict(zedges=zedges, ngals=ngals, noise=noise)
+def save_binned(name, zedges, ell, ngals, noise, cl_in):
+    keys = dict(zedges=zedges, ell=ell, ngals=ngals, noise=noise)
     nprobe = len(ngals)
     for i in range(nprobe):
         for j in range(i + 1):
@@ -110,6 +104,7 @@ def save_binned(name, zedges, ngals, noise, cl_in):
 def load_binned(name):
     with np.load(name) as keys:
         zedges = keys['zedges']
+        ell = keys['ell']
         ngals = keys['ngals']
         noise = keys['noise']
         nprobe = len(ngals)
