@@ -132,3 +132,10 @@ def get_binned_weights(zedges, z, idx):
     for ibin in range(nout):
         weights.append(np.bincount(idx_in[(idx_out == ibin) & inbounds], minlength=nin))
     return np.vstack(weights) / ntot
+
+
+def get_binned_scores(idx, z, zedges, ell, ngals, noise, cl_in, gals_per_arcmin2=20., fsky=0.25):
+    """
+    """
+    weights = get_binned_weights(zedges, z, idx)
+    return reweighted_metrics(weights, ell, ngals, noise, cl_in, gals_per_arcmin2, fsky)
