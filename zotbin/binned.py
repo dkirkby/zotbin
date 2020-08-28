@@ -72,7 +72,7 @@ def init_binned_cl(zedges, ell, what='3x2', sigma_e=0.26, linear_bias=1., nagrid
     """
     """
     probes = get_bin_probes(zedges, what, sigma_e, linear_bias, gals_per_arcmin2=1.)
-    def get_cl(p0, p1, p2, p3):
+    def get_cl(p0, p1, p2, p3, p4, p5, p6):
         model = jax_cosmo.core.Cosmology(
             Omega_c = p0,
             Omega_b = p1,
