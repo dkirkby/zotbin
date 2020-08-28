@@ -144,9 +144,18 @@ def reweighted_metrics(weights, ell, ngals, noise, cl_in, gals_per_arcmin2, fsky
     cinv = sparse.inv(cov_out)
 
     results = {}
-    if 'SNR_3x2' in  metrics:
+    if 'SNR_3x2' in metrics:
         # Calculate SNR2 = mu^t . Cinv . mu
         mu = cl_out[-1].reshape(-1, 1)
         results['SNR_3x2'] = jnp.sqrt(sparse.dot(mu.T, cinv, mu)[0, 0])
+    if 'FOM_3x2' in metrics or 'FOM_DETF_3x2' in metrics:
+        # Calculate the Fisher matrix.
+        mu = cl_out[:-1].reshape(7, -1)
+        F = sparse.dot(mu, cinv, mu.T)
+        Finv = jnp.linalg.inv(F)
+        if 'FOM_3x2' in metrics:
+            results['FOM_3x2'] = 1 / (6.17 * jnp.pi * jnp.sqrt(jnp.linalg.det(Finv[jnp.ix_([0,4], [0,4])])))
+        if 'FOM_DETF_3x2' in metrics:
+            results['FOM_DETF_3x2'] = 1 / (6.17 * jnp.pi * jnp.sqrt(jnp.linalg.det(Finv[jnp.ix_([5,6], [5,6])])))
 
     return results
