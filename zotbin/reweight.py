@@ -134,17 +134,19 @@ def reweighted_cov(cl_out, nl_out, cl_index, ell, fsky):
     return jax.lax.map(get_cov_block, jnp.array(cov_blocks)).reshape((ncl, ncl, len(ell)))
 
 
-def reweighted_metrics(weights, ell, ngals, noise, cl_in, gals_per_arcmin2, fsky):
+def reweighted_metrics(weights, ell, ngals, noise, cl_in, gals_per_arcmin2, fsky, metrics):
     """
     """
     nell = len(ell)
     cl_out = reweight_cl(weights, ngals, cl_in)
     nl_out, cl_index = reweight_noise_cl(weights, gals_per_arcmin2, ngals, noise, nell)
     cov_out = reweighted_cov(cl_out[-1], nl_out, cl_index, ell, fsky)
-
-    # Calculate SNR2 = mu^t . Cinv . mu
     cinv = sparse.inv(cov_out)
-    mu = cl_out[-1].reshape(-1, 1)
-    snr = jnp.sqrt(sparse.dot(mu.T, cinv, mu)[0, 0])
 
-    return {'SNR_3x2': snr}
+    results = {}
+    if 'SNR_3x2' in  metrics:
+        # Calculate SNR2 = mu^t . Cinv . mu
+        mu = cl_out[-1].reshape(-1, 1)
+        results['SNR_3x2'] = jnp.sqrt(sparse.dot(mu.T, cinv, mu)[0, 0])
+
+    return results
