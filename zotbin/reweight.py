@@ -65,7 +65,6 @@ def reweight_noise_cl(weights, gals_per_arcmin2, ngals, noise, nell):
     for i in range(ntracers):
         for j in range(i, ntracers):
             cl_index.append((i, j))
-    cl_index = jnp.array(cl_index)
 
     # Only include a noise contribution for the auto-spectra
     def get_noise_cl(inds):
@@ -73,7 +72,7 @@ def reweight_noise_cl(weights, gals_per_arcmin2, ngals, noise, nell):
         delta = 1.0 - jnp.clip(jnp.abs(i - j), 0.0, 1.0)
         return noise[i] * delta * jnp.ones(nell)
 
-    return jax.lax.map(get_noise_cl, cl_index), cl_index
+    return jax.lax.map(get_noise_cl, jnp.array(cl_index)), cl_index
 
 
 @jax.jit
@@ -103,7 +102,9 @@ def reweight_cl(weights, ngals, cl_in):
     return jnp.concatenate(cl_out, axis=1)
 
 
-def reweighted_cov(cl_out, nl_out, cl_index, ell, fsky=0.25):
+# This is currently the slowest part of the score calculation and needs more tuning.
+@functools.partial(jax.jit, static_argnums=(2, 4))
+def reweighted_cov(cl_out, nl_out, cl_index, ell, fsky):
     """
     """
     # This is essentially jc.angular_cl.gaussian_cl_covariance without using probes...
@@ -143,9 +144,7 @@ def reweighted_metrics(weights, ell, ngals, noise, cl_in, gals_per_arcmin2, fsky
 
     # Calculate SNR2 = mu^t . Cinv . mu
     cinv = sparse.inv(cov_out)
-    mu = cl_out.reshape(-1, 1)
+    mu = cl_out[-1].reshape(-1, 1)
     snr = jnp.sqrt(sparse.dot(mu.T, cinv, mu)[0, 0])
-
-    # Calculate FoM
 
     return {'SNR_3x2': snr}
