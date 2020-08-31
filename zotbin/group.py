@@ -280,6 +280,19 @@ def groupbins(features, redshift, zedges, npct, weighted=True,
     return fedges, grpid, zhist, zsim
 
 
+def save_groups(fname, fedges, grpid, zhist, zsim):
+    np.savez(fname, fedges=fedges, grpid=grpid, zhist=zhist, zsim=zsim)
+
+
+def load_groups(fname):
+    with np.load(fname) as keys:
+        fedges = keys['fedges']
+        grpid = keys['grpid']
+        zhist = keys['zhist']
+        zsim = keys['zsim']
+    return fedges, grpid, zhist, zsim
+
+
 def pairs_iterator(grpid, active):
     """Iterate over pairs of groups and perform some validations.
     """
