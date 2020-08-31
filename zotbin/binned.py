@@ -7,6 +7,8 @@ import jax.numpy as jnp
 import jax_cosmo.bias
 import jax_cosmo.probes
 import jax_cosmo.core
+import jax_cosmo.parameters
+import jax_cosmo.background
 
 import zotbin.jaxcosmo
 import zotbin.reweight
@@ -42,6 +44,41 @@ def get_zedges(z, frac=0.02, damin=0.025, damax=0.028, plot=False):
             ax[0].axvline(ze, color='k', lw=1)
         for ae in aedges:
             ax[1].axvline(ae, color='k', lw=1)
+    return zedges
+
+
+def get_zedges_chi(z, nzbin, plot=False):
+    """Alternate version that is equally spaced in comoving distance.
+    """
+    z = np.asarray(z)
+    # Tabulate comoving distance over a grid spanning the full range of input redshifts.
+    zgrid = np.linspace(0, z.max(), 1000)
+    agrid = 1 / (1 + zgrid)
+    model = jax_cosmo.parameters.Planck15()
+    chi_grid = jax_cosmo.background.radial_comoving_distance(model, agrid)
+    # Compute bin edges that are equally spaced in chi.
+    chi_edges = np.linspace(0, chi_grid[-1], nzbin + 1)
+    zedges = np.empty(nzbin + 1)
+    zedges[0] = 0.
+    zedges[-1] = z.max()
+    zedges[1:-1] = np.interp(chi_edges[1:-1], chi_grid, zgrid)
+    aedges = 1 / (1 + zedges)
+    if plot:
+        plots = {
+            'Redshift $z$': z,
+            'Scale factor $a$': 1 / (1 + z),
+            'Comoving distance $\chi$ [Mpc]': np.interp(z, zgrid, chi_grid)
+        }
+        fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+        for ax, label in zip(axes, plots):
+            ax.hist(plots[label], bins=2 * nzbin, histtype='stepfilled', color='r', alpha=0.5)
+            ax.set_xlabel(label)
+        for ax, edges in zip(axes, (zedges, aedges, chi_edges)):
+            ax.set_yticks([])
+            ax.set_xlim(edges[0], edges[-1])
+            for edge in edges[1:-1]:
+                ax.axvline(edge, c='k', lw=1, alpha=0.5)
+        plt.tight_layout()
     return zedges
 
 
