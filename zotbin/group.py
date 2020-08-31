@@ -421,7 +421,7 @@ def plotzvecs(features, redshift, zedges, npct=20, pnorm=2):
     plt.tight_layout()
 
 
-def plotzgrp(zhist, zedges=None, stretch=4, sort=True):
+def plotzgrp(zhist, zedges=None, stretch=4, sort=False):
     ngrp, nzbin = zhist.shape
     if zedges is None:
         zc = np.arange(nzbin)
