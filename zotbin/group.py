@@ -1,5 +1,5 @@
 import numpy as np
-import matplotlib.pyplot as pyplot
+import matplotlib.pyplot as plt
 
 
 def get_fedges(features, npct):
@@ -42,7 +42,7 @@ def groupinit(features, redshift, zedges, npct=20):
     return fedges, sample_bin, zhist
 
 
-def groupbins(features, redshift, zedges, npct=20, weighted=True,
+def groupbins(features, redshift, zedges, npct, weighted=True,
               sigma=0.2, min_groups=200, maxfrac=0.02, minfrac=0.005,
               validate=False, validate_interval=1000, maxiter=None):
     """Group similar bins in multidimensional feature space.
