@@ -280,17 +280,18 @@ def groupbins(features, redshift, zedges, npct, weighted=True,
     return fedges, grpid, zhist, zsim
 
 
-def save_groups(fname, fedges, grpid, zhist, zsim):
-    np.savez(fname, fedges=fedges, grpid=grpid, zhist=zhist, zsim=zsim)
+def save_groups(fname, zedges, fedges, grpid, zhist, zsim):
+    np.savez(fname, zedges=zedges, fedges=fedges, grpid=grpid, zhist=zhist, zsim=zsim)
 
 
 def load_groups(fname):
     with np.load(fname) as keys:
+        zedges = keys['zedges']
         fedges = keys['fedges']
         grpid = keys['grpid']
         zhist = keys['zhist']
         zsim = keys['zsim']
-    return fedges, grpid, zhist, zsim
+    return zedges, fedges, grpid, zhist, zsim
 
 
 def pairs_iterator(grpid, active):
