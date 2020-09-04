@@ -435,7 +435,7 @@ def plotzvecs(features, redshift, zedges, npct=20, pnorm=2):
     plt.tight_layout()
 
 
-def plotzgrp(zhist, zedges=None, stretch=4, sort=False):
+def plotzgrp(zhist, zedges=None, stretch=4, sort=False, figsize=(10,5)):
     ngrp, nzbin = zhist.shape
     if zedges is None:
         zc = np.arange(nzbin)
@@ -445,7 +445,7 @@ def plotzgrp(zhist, zedges=None, stretch=4, sort=False):
     if sort:
         zavg = np.sum(zhist * np.arange(nzbin), axis=1) / np.sum(zhist, axis=1)
         zplot = zplot[np.argsort(zavg)]
-    fig = plt.figure(figsize=(10, 5))
+    fig = plt.figure(figsize=figsize)
     yoffsets = np.arange(ngrp) / stretch
     for dndz, dy in zip(zplot[::-1], yoffsets[::-1]):
         #plt.plot(zc, dndz + dy, 'r-', alpha=0.5)
