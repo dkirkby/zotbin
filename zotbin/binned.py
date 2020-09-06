@@ -173,11 +173,10 @@ def get_binned_weights(zedges, z, idx):
     return np.vstack(weights) / ntot
 
 
-def get_binned_scores(idx, z, zedges, ell, ngals, noise, cl_in,
-                      gals_per_arcmin2=20., fsky=0.25, metrics=['SNR_3x2', 'FOM_3x2', 'FOM_DETF_3x2']):
-    """
+def get_binned_scores(idx, z, zedges, ell, ngals, noise, cl_in, gals_per_arcmin2=20., fsky=0.25):
+    """Calculate all of the 3x2 metrics: SNR2, FOM, FOM_DETF.
     """
     w = get_binned_weights(zedges, z, idx)
     weights = jnp.array([w, w])
     return zotbin.reweight.reweighted_metrics(
-        weights, ell, ngals, noise, cl_in, gals_per_arcmin2, fsky, metrics)
+        weights, ell, ngals, noise, cl_in, gals_per_arcmin2, fsky)
