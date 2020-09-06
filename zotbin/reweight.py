@@ -44,37 +44,6 @@ def init_reweighting(probes, cl):
     return ngals, noise, cl_in
 
 
-# This is currently several times slower than reweight_cl so needs more tuning.
-@functools.partial(jax.jit, static_argnums=(1, 4))
-def reweight_noise_cl(weights, gals_per_arcmin2, ngals, noise, nell):
-    """
-    """
-    #assert len(weights) == len(noise)
-    nprobe = weights.shape[0]
-    noise_out = []
-    ntracers = 0
-    for i in range(nprobe):
-        noise_inv_in = 1 / (ngals[i] * noise[i])
-        noise_inv_out = gals_per_arcmin2 * weights[i].dot(noise_inv_in)
-        noise_out.append(1 / noise_inv_out)
-        ntracers += len(noise_inv_out)
-    noise = jnp.concatenate(noise_out)
-
-    # Define an ordering for the blocks of the signal vector
-    cl_index = []
-    for i in range(ntracers):
-        for j in range(i, ntracers):
-            cl_index.append((i, j))
-
-    # Only include a noise contribution for the auto-spectra
-    def get_noise_cl(inds):
-        i, j = inds
-        delta = 1.0 - jnp.clip(jnp.abs(i - j), 0.0, 1.0)
-        return noise[i] * delta * jnp.ones(nell)
-
-    return jax.lax.map(get_noise_cl, jnp.array(cl_index)), cl_index
-
-
 @jax.jit
 def reweight_cl(weights, ngals, cl_in):
     """
@@ -100,6 +69,24 @@ def reweight_cl(weights, ngals, cl_in):
                 cl_out[offset + j * rowstep + i2 - i1] = cl[:, j, start:]
         offset += nrow * rowstep
     return jnp.concatenate(cl_out, axis=1)
+
+
+@jax.jit
+def reweight_noise_cl(weights, ngals, noise, gals_per_arcmin2):
+    """
+    """
+    noise_out = []
+    for i in range(weights.shape[0]):
+        noise_inv_in = 1 / (ngals[i] * noise[i])
+        noise_inv_out = gals_per_arcmin2 * weights[i].dot(noise_inv_in)
+        noise_out.append(1 / noise_inv_out)
+    nonzero = jnp.concatenate(noise_out)
+    ntracers = nonzero.shape[0]
+    i = jnp.arange(ntracers)
+    scatter = (2 * ntracers - i + 1) * i // 2
+    ncl = (ntracers + 1) * ntracers // 2
+    return jax.ops.index_update(
+        jnp.zeros(ncl), scatter, nonzero, indices_are_sorted=True, unique_indices=True).reshape(ncl, 1)
 
 
 _cov_pq_cache = {}
@@ -154,60 +141,20 @@ def gaussian_cl_covariance(ell, cl_signal, cl_noise, f_sky=0.25, sparse=True):
     return cov if sparse else sparse.to_dense(cov)
 
 
-# This is currently the slowest part of the score calculation and needs more tuning.
-@functools.partial(jax.jit, static_argnums=(2, 4))
-def reweighted_cov(cl_out, nl_out, cl_index, ell, fsky):
+@jax.jit
+def reweighted_metrics(weights, ell, ngals, noise, cl_in, gals_per_arcmin2, fsky):
+    """The sparse cinv calculation is currently the bottleneck.
     """
-    """
-    # This is essentially jc.angular_cl.gaussian_cl_covariance without using probes...
-    cl_obs = cl_out + nl_out
-    ncl = cl_obs.shape[0]
-    norm = (2 * ell + 1) * jnp.gradient(ell) * fsky
-
-    def find_index(a, b):
-        if (a, b) in cl_index:
-            return cl_index.index((a, b))
-        else:
-            return cl_index.index((b, a))
-
-    cov_blocks = []
-    for (i, j) in cl_index:
-        for (m, n) in cl_index:
-            cov_blocks.append(
-                (find_index(i, m), find_index(j, n), find_index(i, n), find_index(j, m))
-            )
-
-    def get_cov_block(inds):
-        a, b, c, d = inds
-        cov = (cl_obs[a] * cl_obs[b] + cl_obs[c] * cl_obs[d]) / norm
-        return cov
-
-    # Build a sparse representation of the output covariance.
-    return jax.lax.map(get_cov_block, jnp.array(cov_blocks)).reshape((ncl, ncl, len(ell)))
-
-
-def reweighted_metrics(weights, ell, ngals, noise, cl_in, gals_per_arcmin2, fsky, metrics):
-    """
-    """
-    nell = len(ell)
     cl_out = reweight_cl(weights, ngals, cl_in)
-    nl_out, cl_index = reweight_noise_cl(weights, gals_per_arcmin2, ngals, noise, nell)
+    nl_out = reweight_noise_cl(weights, ngals, noise, gals_per_arcmin2)
     cov_out = gaussian_cl_covariance(ell, cl_out[-1], nl_out, fsky)
     cinv = sparse.inv(cov_out)
-
-    results = {}
-    if 'SNR_3x2' in metrics:
-        # Calculate SNR2 = mu^t . Cinv . mu
-        mu = cl_out[-1].reshape(-1, 1)
-        results['SNR_3x2'] = jnp.sqrt(sparse.dot(mu.T, cinv, mu)[0, 0])
-    if 'FOM_3x2' in metrics or 'FOM_DETF_3x2' in metrics:
-        # Calculate the Fisher matrix.
-        mu = cl_out[:-1].reshape(7, -1)
-        F = sparse.dot(mu, cinv, mu.T)
-        Finv = jnp.linalg.inv(F)
-        if 'FOM_3x2' in metrics:
-            results['FOM_3x2'] = 1 / (6.17 * jnp.pi * jnp.sqrt(jnp.linalg.det(Finv[jnp.ix_([0,4], [0,4])])))
-        if 'FOM_DETF_3x2' in metrics:
-            results['FOM_DETF_3x2'] = 1 / (6.17 * jnp.pi * jnp.sqrt(jnp.linalg.det(Finv[jnp.ix_([5,6], [5,6])])))
-
-    return results
+    mu = cl_out[-1].reshape(-1, 1)
+    dmu = cl_out[:-1].reshape(7, -1)
+    F = sparse.dot(dmu, cinv, dmu.T)
+    Finv = jnp.linalg.inv(F)
+    return {
+        'SNR_3x2': jnp.sqrt(sparse.dot(mu.T, cinv, mu)[0, 0]),
+        'FOM_3x2': 1 / (6.17 * jnp.pi * jnp.sqrt(jnp.linalg.det(Finv[jnp.ix_([0,4], [0,4])]))),
+        'FOM_DETF_3x2': 1 / (6.17 * jnp.pi * jnp.sqrt(jnp.linalg.det(Finv[jnp.ix_([5,6], [5,6])])))
+    }
