@@ -62,7 +62,7 @@ def reweight_cl(weights, ngals, cl_in):
             #assert weights[i2].shape[1] == len(ngals[i2])
             W = weights[i2] * ngals[i2]
             W /= jnp.sum(W, axis=1, keepdims=True)
-            w[i2] = W
+            w[i2] = jnp.nan_to_num(W, posinf=1e30, neginf=-1e30, copy=False)
             cl = jnp.einsum('ip,spqk,jq->sijk', w[i1], cl_in[i2][i1], w[i2])
             for j in range(nrow):
                 start = j if i1 == i2 else 0
@@ -79,7 +79,8 @@ def reweight_noise_cl(weights, ngals, noise, gals_per_arcmin2):
     for i in range(weights.shape[0]):
         noise_inv_in = 1 / (ngals[i] * noise[i])
         noise_inv_out = gals_per_arcmin2 * weights[i].dot(noise_inv_in)
-        noise_out.append(1 / noise_inv_out)
+        # Replace 1/0 with 0 when going back to noise_out.
+        noise_out.append(jnp.nan_to_num(1 / noise_inv_out, posinf=1e30, neginf=-1e30))
     nonzero = jnp.concatenate(noise_out)
     ntracers = nonzero.shape[0]
     i = jnp.arange(ntracers)
