@@ -89,40 +89,33 @@ def reweight_noise_cl(weights, ngals, noise, gals_per_arcmin2):
         jnp.zeros(ncl), scatter, nonzero, indices_are_sorted=True, unique_indices=True).reshape(ncl, 1)
 
 
-_cov_pq_cache = {}
+_cov_indices_cache = {}
 
-def get_cov_pq(ncl):
+def get_cov_indices(ncl):
 
-    if ncl not in _cov_pq_cache:
-
+    if ncl not in _cov_indices_cache:
+        i_of_k = np.empty(ncl, np.int32)
+        j_of_k = np.empty(ncl, np.int32)
+        k_of_ij = np.empty((ncl, ncl), np.int32)
         ntracer = int(np.round((np.sqrt(8 * ncl + 1) - 1) / 2))
-
-        j = jnp.arange(ntracer)
-        i = j.reshape(-1, 1)
-        k_of_ij = (2 * ntracer - i - 1) * i // 2 + j
-
-        i_of_k, j_of_k = [], []
         k = 0
         for i in range(ntracer):
             for j in range(i, ntracer):
-                i_of_k.append(i)
-                j_of_k.append(j)
-                assert k_of_ij[i, j] == k
+                i_of_k[k] = i
+                j_of_k[k] = j
+                k_of_ij[j, i] = k_of_ij[i, j] = k
                 k += 1
-        i_of_k = jnp.array(i_of_k)
-        j_of_k = jnp.array(j_of_k)
+        p = k_of_ij[i_of_k.reshape(-1, 1), i_of_k]
+        q = k_of_ij[j_of_k.reshape(-1, 1), j_of_k]
+        r = k_of_ij[i_of_k.reshape(-1, 1), j_of_k]
+        s = k_of_ij[j_of_k.reshape(-1, 1), i_of_k]
+        _cov_indices_cache[ncl] = jnp.array((p, q, r, s))
 
-        k1 = jnp.arange(ncl)
-        k2 = k1.reshape(-1, 1)
-        p = k_of_ij[i_of_k[k1], i_of_k[k2]]
-        q = k_of_ij[j_of_k[k1], j_of_k[k2]]
-        _cov_pq_cache[ncl] = (p, q)
-
-    return _cov_pq_cache[ncl]
+    return _cov_indices_cache[ncl]
 
 
 @jax.jit
-def gaussian_cl_covariance_helper(ell, cl_signal, cl_noise, p, q, f_sky):
+def gaussian_cl_covariance_helper(ell, cl_signal, cl_noise, idx, f_sky):
     """Optimized kernel for assembling a sparse Gaussian covariance.
 
     Use :func:`get_cov_pq` to obtain (p, q) or use the wrapper
@@ -131,13 +124,13 @@ def gaussian_cl_covariance_helper(ell, cl_signal, cl_noise, p, q, f_sky):
     cl_obs = cl_signal + cl_noise
     norm = (2 * ell + 1) * jnp.gradient(ell) * f_sky
     outer = cl_obs.reshape(-1, 1, len(ell)) * cl_obs / norm
-    return outer[p, q] + outer[q, p]
+    return outer[idx[0], idx[1]] + outer[idx[2], idx[3]]
 
 
 def gaussian_cl_covariance(ell, cl_signal, cl_noise, f_sky=0.25, sparse=True):
     ell = jnp.atleast_1d(ell)
-    p, q = get_cov_pq(len(cl_signal))
-    cov = gaussian_cl_covariance_helper(ell, cl_signal, cl_noise, p, q, f_sky)
+    idx = get_cov_indices(len(cl_signal))
+    cov = gaussian_cl_covariance_helper(ell, cl_signal, cl_noise, idx, f_sky)
     return cov if sparse else sparse.to_dense(cov)
 
 
