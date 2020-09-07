@@ -1,6 +1,7 @@
 import functools
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 import jax
 import jax.numpy as jnp
@@ -53,10 +54,9 @@ def metrics(params, transform_fun, mixing_matrix, init_data, gals_per_arcmin2, f
 
 def jax_optimize(optimizer, initial_params, nsteps, transform_fun, mixing_matrix, init_data,
                  gals_per_arcmin2=20., fsky=0.25, metric='FOM_DETF_3x2'):
-    """Optimize a single 3x2 metric with respect to normalized dn/dz weights calculated from
-    unconstrained parameters p as:
+    """Optimize weights wrt parameterized dndz weights using jax.
 
-       1/n dn/dz = transform_fun(p) . mixing_matrix
+    Should normally be used via the driver :func:`optimize`.
 
     Uses a fast calculation of the metrics governed by init_data.
 
@@ -100,7 +100,13 @@ def jax_optimize(optimizer, initial_params, nsteps, transform_fun, mixing_matrix
 
 def scipy_optimize(minimize_kwargs, initial_params, transform_fun, mixing_matrix, init_data,
                    scale=-1., gals_per_arcmin2=20., fsky=0.25, metric='FOM_DETF_3x2'):
-    """Optimize using :func:`scipy.optimize.minimize` initialized with the specified
+    """Optimize weights wrt parameterized dndz weights using scipy.
+
+    Should normally be used via the driver :func:`optimize`.
+
+    Uses a fast calculation of the metrics governed by init_data.
+
+    Optimizes using :func:`scipy.optimize.minimize` initialized with the specified
     keyword args.
     """
     assert mixing_matrix.sum() == 1
@@ -130,3 +136,41 @@ def scipy_optimize(minimize_kwargs, initial_params, transform_fun, mixing_matrix
         print(result.message)
 
     return max_score, final_params, np.array(scores)
+
+
+def optimize(nbin, mixing_matrix, trial_fun, ntrial=1, transform='softmax', metric='FOM_DETF_3x2', seed=123, plot=True):
+    """Optimize a single 3x2 metric with respect to normalized dn/dz weights calculated from
+    unconstrained parameters p as:
+
+       1/n dn/dz = transform(p) . mixing_matrix
+
+    Returns the best score and corresponding parameter values.
+    """
+    if mixing_matrix.sum() != 1:
+        raise ValueError('The mixing matrix is not normalized.')
+    nzopt, nzcalc = mixing_matrix.shape
+
+    if transform == 'softmax':
+        transform_fun = softmax_transform
+        pshape = (nbin, nzopt)
+    elif transform == 'extend':
+        transform_fun = extend_transform
+        pshape = (nbin - 1, nzopt)
+
+    gen = np.random.RandomState(seed)
+    max_score = -1
+    for trial in range(ntrial):
+        params_in = gen.normal(size=pshape)
+        score, params_out, scores = trial_fun(
+            initial_params=params_in, transform_fun=transform_fun, mixing_matrix=mixing_matrix, metric=metric)
+        print(f'trial {trial+1}/{ntrial}: score={score:.3f} (max={max_score:.3f}) after {len(scores)} steps.')
+        if score > max_score:
+            max_score = score
+            best_params = params_out
+        if plot:
+            plt.plot(scores)
+    if plot:
+        plt.xlabel('Optimize steps')
+        plt.ylabel(metric)
+
+    return max_score, best_params
