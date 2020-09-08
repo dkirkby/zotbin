@@ -181,3 +181,21 @@ def optimize(nbin, mixing_matrix, init_data, ntrial=1, transform='softmax', meth
     dndz = transform_fun(best_params).dot(mixing_matrix)
 
     return scores, dndz
+
+
+def plot_dndz(dndz, zedges, gals_per_arcmin2=20.):
+    """Plot the normalized dndz from an optimization.
+
+    Should normally use zedges=init_data[0].
+    """
+    zc = 0.5 * (zedges[1:] + zedges[:-1])
+    dz = np.diff(zedges)
+    norm = gals_per_arcmin2 * 0.1 / dz
+    for i, dndz_bin in enumerate(dndz):
+        color = f'C{i}'
+        plt.hist(zc, zedges, weights=dndz_bin * norm, histtype='stepfilled', alpha=0.25, color=color)
+        plt.hist(zc, zedges, weights=dndz_bin * norm, histtype='step', alpha=0.75, color=color)
+    plt.hist(zc, zedges, weights=dndz.sum(axis=0) * norm, histtype='step', color='k')
+    plt.xlabel('Redshift $z$')
+    plt.xlim(zedges[0], zedges[-1])
+    plt.ylabel('Galaxies / ($\Delta z=0.1$) / sq.arcmin.')
