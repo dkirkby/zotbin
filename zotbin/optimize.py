@@ -52,8 +52,8 @@ def metrics(params, transform_fun, mixing_matrix, init_data, gals_per_arcmin2, f
     return zotbin.reweight.reweighted_metrics(probe_dndz, *init_data[1:], gals_per_arcmin2, fsky)
 
 
-def jax_optimize(optimizer, initial_params, nsteps, transform_fun, mixing_matrix, init_data,
-                 gals_per_arcmin2=20., fsky=0.25, metric='FOM_DETF_3x2'):
+def jax_optimize(optimizer, initial_params, transform_fun, mixing_matrix, init_data,
+                 gals_per_arcmin2, fsky, metric, callback, nsteps=100):
     """Optimize weights wrt parameterized dndz weights using jax.
 
     Should normally be used via the driver :func:`optimize`.
@@ -67,9 +67,6 @@ def jax_optimize(optimizer, initial_params, nsteps, transform_fun, mixing_matrix
     The input optimizer can any instantiated method from jax.experimental.optimizers,
     e.g. ``optimizers.sgd(learning_rate)``.
     """
-    assert mixing_matrix.sum() == 1
-
-    @jax.jit
     def score(p):
         return metrics(p, transform_fun, mixing_matrix, init_data,  gals_per_arcmin2, fsky)[metric]
 
@@ -85,21 +82,13 @@ def jax_optimize(optimizer, initial_params, nsteps, transform_fun, mixing_matrix
         opt_state = opt_update(stepnum, -grads, opt_state)
         return score, opt_state
 
-    scores = []
-    max_score = -1.
-    final_params = initial_params
     for stepnum in range(nsteps):
         score, opt_state = take_step(stepnum, opt_state)
-        scores.append(float(score))
-        if scores[-1] > max_score:
-            max_score = scores[-1]
-            final_params = opt_params(opt_state)
-
-    return max_score, np.array(final_params), np.array(scores)
+        callback(np.float32(score), opt_params(opt_state))
 
 
 def scipy_optimize(minimize_kwargs, initial_params, transform_fun, mixing_matrix, init_data,
-                   scale=-1., gals_per_arcmin2=20., fsky=0.25, metric='FOM_DETF_3x2'):
+                   gals_per_arcmin2, fsky, metric, callback, scale=-1.):
     """Optimize weights wrt parameterized dndz weights using scipy.
 
     Should normally be used via the driver :func:`optimize`.
@@ -109,7 +98,6 @@ def scipy_optimize(minimize_kwargs, initial_params, transform_fun, mixing_matrix
     Optimizes using :func:`scipy.optimize.minimize` initialized with the specified
     keyword args.
     """
-    assert mixing_matrix.sum() == 1
     pshape = initial_params.shape
 
     @jax.jit
@@ -118,33 +106,24 @@ def scipy_optimize(minimize_kwargs, initial_params, transform_fun, mixing_matrix
 
     score_and_grads = jax.jit(jax.value_and_grad(score))
 
-    scores = []
-    max_score = -1
-    final_params = initial_params
-
     def optimize_fun(p):
-        nonlocal max_score, final_params
         score, grads = score_and_grads(jnp.array(p.reshape(pshape)))
-        scores.append(np.float(score))
-        if scores[-1] > max_score:
-            max_score = scores[-1]
-            final_params = p.reshape(pshape)
+        callback(score, p)
         return scale * scores[-1], scale * np.array(grads).reshape(-1)
 
     result = scipy.optimize.minimize(optimize_fun, initial_params.flatten(), jac=True, **minimize_kwargs)
     if result.status not in (0, 2):
         print(result.message)
 
-    return max_score, final_params, np.array(scores)
 
-
-def optimize(nbin, mixing_matrix, trial_fun, ntrial=1, transform='softmax', metric='FOM_DETF_3x2', seed=123, plot=True):
+def optimize(nbin, mixing_matrix, optimizer, init_data, ntrial=1, transform='softmax',
+             gals_per_arcmin2=20., fsky=0.25, metric='FOM_DETF_3x2', interval=500, seed=123, plot=True):
     """Optimize a single 3x2 metric with respect to normalized dn/dz weights calculated from
     unconstrained parameters p as:
 
        1/n dn/dz = transform(p) . mixing_matrix
 
-    Returns the best score and corresponding parameter values.
+    Returns the best score and corresponding normalized dn/dz weights.
     """
     if mixing_matrix.sum() != 1:
         raise ValueError('The mixing matrix is not normalized.')
@@ -157,20 +136,38 @@ def optimize(nbin, mixing_matrix, trial_fun, ntrial=1, transform='softmax', metr
         transform_fun = extend_transform
         pshape = (nbin - 1, nzopt)
 
+    scores = []
+    max_score = -1
+    best_params = None
+    def callback(score, params):
+        nonlocal scores, max_score, best_params
+        if score > max_score:
+            max_score = score
+            best_params = params.copy()
+        scores.append(score)
+        if len(scores) % interval == 0:
+            print(f'  score={score:.3f} (max={max_score:.3f}) after {len(scores)} steps.')
+
     gen = np.random.RandomState(seed)
     max_score = -1
     for trial in range(ntrial):
         params_in = gen.normal(size=pshape)
-        score, params_out, scores = trial_fun(
-            initial_params=params_in, transform_fun=transform_fun, mixing_matrix=mixing_matrix, metric=metric)
-        print(f'trial {trial+1}/{ntrial}: score={score:.3f} (max={max_score:.3f}) after {len(scores)} steps.')
-        if score > max_score:
-            max_score = score
-            best_params = params_out
+        optimizer(
+            initial_params=params_in, transform_fun=transform_fun, mixing_matrix=mixing_matrix,
+            init_data=init_data, gals_per_arcmin2=gals_per_arcmin2, fsky=fsky, metric=metric, callback=callback)
+        print(f'trial {trial+1}/{ntrial}: score={scores[-1]:.3f} (max={max_score:.3f}) after {len(scores)} steps.')
         if plot:
-            plt.plot(scores)
+            plt.plot(scores, 'r-', alpha=0.35)
+        scores.clear()
     if plot:
         plt.xlabel('Optimize steps')
         plt.ylabel(metric)
 
-    return max_score, best_params
+    # Calculate all 3x2 scores at the best parameters.
+    scores = metrics(best_params, transform_fun, mixing_matrix, init_data, gals_per_arcmin2, fsky)
+    scores = {metric: float(value) for metric, value in scores.items()}
+
+    # Convert the best parameters to normalized dn/dz weights.
+    dndz = transform_fun(best_params).dot(mixing_matrix)
+
+    return scores, dndz
