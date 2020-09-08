@@ -116,7 +116,7 @@ def scipy_optimize(minimize_kwargs, initial_params, transform_fun, mixing_matrix
         print(result.message)
 
 
-def optimize(nbin, mixing_matrix, optimizer, init_data, ntrial=1, transform='softmax',
+def optimize(nbin, mixing_matrix, init_data, ntrial=1, transform='softmax', method='jax', opt_args={},
              gals_per_arcmin2=20., fsky=0.25, metric='FOM_DETF_3x2', interval=500, seed=123, plot=True):
     """Optimize a single 3x2 metric with respect to normalized dn/dz weights calculated from
     unconstrained parameters p as:
@@ -135,6 +135,8 @@ def optimize(nbin, mixing_matrix, optimizer, init_data, ntrial=1, transform='sof
     elif transform == 'extend':
         transform_fun = extend_transform
         pshape = (nbin - 1, nzopt)
+    else:
+        raise ValueError(f'Invalid transform: {transform}.')
 
     scores = []
     max_score = -1
@@ -143,18 +145,26 @@ def optimize(nbin, mixing_matrix, optimizer, init_data, ntrial=1, transform='sof
         nonlocal scores, max_score, best_params
         if score > max_score:
             max_score = score
-            best_params = params.copy()
+            best_params = params
         scores.append(score)
         if len(scores) % interval == 0:
             print(f'  score={score:.3f} (max={max_score:.3f}) after {len(scores)} steps.')
+
+    opt_args.update(
+        transform_fun=transform_fun, mixing_matrix=mixing_matrix, init_data=init_data,
+        gals_per_arcmin2=gals_per_arcmin2, fsky=fsky, metric=metric, callback=callback)
+    if method == 'jax':
+        optimizer = functools.partial(jax_optimize, **opt_args)
+    elif method == 'scipy':
+        optimizer = functools.partial(scipy_optimize, **opt_args)
+    else:
+        raise ValueError(f'Invalid method: {method}.')
 
     gen = np.random.RandomState(seed)
     max_score = -1
     for trial in range(ntrial):
         params_in = gen.normal(size=pshape)
-        optimizer(
-            initial_params=params_in, transform_fun=transform_fun, mixing_matrix=mixing_matrix,
-            init_data=init_data, gals_per_arcmin2=gals_per_arcmin2, fsky=fsky, metric=metric, callback=callback)
+        optimizer(initial_params=params_in)
         print(f'trial {trial+1}/{ntrial}: score={scores[-1]:.3f} (max={max_score:.3f}) after {len(scores)} steps.')
         if plot:
             plt.plot(scores, 'r-', alpha=0.35)
