@@ -42,8 +42,8 @@ def groupinit(features, redshift, zedges, npct=20):
     return fedges, sample_bin, zhist
 
 
-def groupbins(features, redshift, zedges, npct, weighted=True,
-              sigma=0.2, min_groups=200, maxfrac=0.02, minfrac=0.005,
+def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
+              save_groups=(400, 300, 200, 150, 100, 50), maxfrac=0.02, minfrac=0.005,
               validate=False, validate_interval=1000, maxiter=None):
     """Group similar bins in multidimensional feature space.
 
@@ -102,6 +102,7 @@ def groupbins(features, redshift, zedges, npct, weighted=True,
     print(f'Grouping with ndata={ndata}, nmin={nmin}, nmax={nmax}, nzbin={nzbin}, nfbin={nfbin}.')
     if validate:
         zhist0 = zhist.copy()
+    min_groups = min(save_groups)
 
     # Calculate the number of samples (1-norm) in each feature bin.
     zsum = np.sum(zhist, axis=1)
@@ -209,6 +210,8 @@ def groupbins(features, redshift, zedges, npct, weighted=True,
             fsim[i1, :] = fsim[:, i1] = newfsim
             fsim[i2, :] = fsim[:, i2] = 0.
             ngrp -= 1
+            if ngrp in save_groups:
+                save_groups(...)
         else:
             # Zero this similiarity but leave i & j eligible for grouping with other bins.
             eligible[i1, i2] = 0.
@@ -420,18 +423,21 @@ def plotfbins(features, npct=20, nhist=100, inset_pct=1, show_edges=True):
     plt.tight_layout()
 
 
-def plotzvecs(features, redshift, zedges, npct=20, pnorm=2):
+def plotzvecs(features, redshift, zedges, npct=20, pnorm=2, sort=True):
 
     _, _, zhist = groupinit(features, redshift, zedges, npct)
     nfbin, nzbin = zhist.shape
 
     zhist = zhist.astype(float)
+    iz = np.arange(nzbin)
+    zmean = np.sum(iz * zhist, axis=1) / np.sum(zhist, axis=1)
+    order = np.argsort(zmean)
     znorm = np.sum(zhist ** pnorm, axis=1, keepdims=True) ** (1 / pnorm)
     zhist = np.divide(zhist, znorm, where=znorm > 0, out=zhist)
 
     fig, ax = plt.subplots(1, 1, figsize=(12, 12))
     ax.axis('off')
-    ax.imshow(zhist, aspect='auto', origin='lower')
+    ax.imshow(zhist[order], aspect='auto', origin='lower')
     plt.tight_layout()
 
 
