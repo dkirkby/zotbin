@@ -379,6 +379,8 @@ def redshift_similarity(zhist, znorm, grpid, active, method):
         elif method == 'cosine':
             z12dot = np.sum(zhist[idx1] * zhist[idx2])
             z12sim = z12dot / (znorm[idx1] * znorm[idx2])
+        elif method == 'EMD':
+            raise NotImplementedError('EMD similarity not implemented yet.')
         else:
             raise ValueError(f'Invalid method "{method}".')
         zsim[idx1, idx2] = z12sim
