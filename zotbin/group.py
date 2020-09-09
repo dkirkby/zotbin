@@ -43,8 +43,8 @@ def groupinit(features, redshift, zedges, npct=20):
 
 
 def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
-              save_groups=(400, 300, 200, 150, 100, 50), maxfrac=0.02, minfrac=0.005,
-              validate=False, validate_interval=1000, maxiter=None):
+              ngrp_save=(400, 300, 200, 150, 100, 50), maxfrac=0.02, minfrac=0.005,
+              validate=False, validate_interval=1000, maxiter=None, savename='group_{N}.npz'):
     """Group similar bins in multidimensional feature space.
 
     Initial bins are defined as a rectangular grid in feature space with a grid
@@ -102,7 +102,9 @@ def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
     print(f'Grouping with ndata={ndata}, nmin={nmin}, nmax={nmax}, nzbin={nzbin}, nfbin={nfbin}.')
     if validate:
         zhist0 = zhist.copy()
-    min_groups = min(save_groups)
+    else:
+        zhist0 = None
+    min_groups = min(ngrp_save)
 
     # Calculate the number of samples (1-norm) in each feature bin.
     zsum = np.sum(zhist, axis=1)
@@ -209,9 +211,18 @@ def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
             # Update the full feature similarity matrix.
             fsim[i1, :] = fsim[:, i1] = newfsim
             fsim[i2, :] = fsim[:, i2] = 0.
+            # Reduce the number of groups and save a snapshot if requested.
             ngrp -= 1
-            if ngrp in save_groups:
-                save_groups(...)
+            if ngrp in ngrp_save:
+                print(f'Finalizing result with {ngrp} groups...')
+                grpid_save, zhist_save, zsim_save = finalize(
+                    ngrp, grpid, zhist, zsim, zedges, active, sample_bin, redshift, iempty, validate, zhist0)
+                if validate:
+                    print('Validating saved results...')
+                    validate_groups(features, redshift, zedges, fedges, grpid_save, zhist_save)
+                fname = savename.format(N=ngrp)
+                save_groups(fname, zedges, fedges, grpid_save, zhist_save, zsim_save)
+                print(f'Saved {ngrp} groups to {fname}')
         else:
             # Zero this similiarity but leave i & j eligible for grouping with other bins.
             eligible[i1, i2] = 0.
@@ -232,6 +243,13 @@ def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
     elif np.min(zsum[active]) >= nmin:
         print(f'All groups above nmin={nmin} after {niter} iterations.')
 
+
+def finalize(ngrp, grpid_in, zhist_in, zsim_in, zedges, active, sample_bin, redshift, iempty, validate, zhist0):
+    """
+    """
+    ndata = len(sample_bin)
+    nfbin, nzbin = zhist_in.shape
+    grpid = grpid_in.copy()
     # Renumber the groups consecutively and compress the outputs.
     sample_grp = np.empty_like(sample_bin)
     if iempty != None:
@@ -241,6 +259,7 @@ def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
     ids = np.unique(grpid)
     if iempty != None:
         ids = ids[1:]
+    assert ngrp == len(ids), f'ngrp mismatch: {ngrp} != {len(ids)}.'
     if validate:
         zhist_out = np.empty((ngrp, nzbin), int)
     rows = np.empty(ngrp, int)
@@ -248,7 +267,7 @@ def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
         sel = (grpid == idx)
         bins = np.where(sel)[0]
         if validate:
-            zhist_out[i] = zhist0[bins].sum(axis=0)
+            zhist_check[i] = zhist0[bins].sum(axis=0)
         assert bins[0] == idx
         assert active[bins[0]] and not np.any(active[bins[1:]])
         rows[i] = idx
@@ -257,30 +276,25 @@ def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
         assert bin_sel.shape == (ndata,)
         sample_grp[bin_sel] = i
         grp_hist, _ = np.histogram(redshift[bin_sel], zedges)
-        assert np.array_equal(grp_hist, zhist[idx])
+        assert np.array_equal(grp_hist, zhist_in[idx])
         grpid[bins] = i
 
     # Sort the groups in order of increase average redshift.
-    zavg = np.sum(zhist[rows] * np.arange(nzbin), axis=1) / np.sum(zhist[rows], axis=1)
+    zavg = np.sum(zhist_in[rows] * np.arange(nzbin), axis=1) / np.sum(zhist_in[rows], axis=1)
     iorder = np.argsort(zavg)
     rows = rows[iorder]
-    new_grpid = np.empty_like(grpid)
+    grpid_out = np.empty_like(grpid)
     for i in range(ngrp):
-        new_grpid[grpid == iorder[i]] = i
+        grpid_out[grpid == iorder[i]] = i
     if iempty is not None:
-        new_grpid[grpid == -1] = -1
-    grpid = new_grpid
-    zhist = zhist[rows]
-    assert zhist.sum() == ndata
+        grpid_out[grpid == -1] = -1
+    zhist_out = zhist_in[rows]
+    assert zhist_out.sum() == ndata
     if validate:
-        assert np.array_equal(zhist, zhist_out[iorder])
-    zsim = zsim[np.ix_(rows, rows)]
-    assert np.all(np.diag(zsim) == 0)
-    if validate:
-        print('Validating final results')
-        validate_groups(features, redshift, zedges, fedges, grpid, zhist)
-
-    return fedges, grpid, zhist, zsim
+        assert np.array_equal(zhist, zhist_check[iorder])
+    zsim_out = zsim_in[np.ix_(rows, rows)]
+    assert np.all(np.diag(zsim_out) == 0)
+    return grpid, zhist_out, zsim_out
 
 
 def save_groups(fname, zedges, fedges, grpid, zhist, zsim):
