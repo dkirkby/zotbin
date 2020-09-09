@@ -44,7 +44,8 @@ def groupinit(features, redshift, zedges, npct=20):
 
 def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
               ngrp_save=(400, 300, 200, 150, 100, 75), maxfrac=0.02, minfrac=0.005,
-              validate=False, validate_interval=1000, maxiter=None, savename='group_{N}.npz'):
+              validate=False, validate_interval=1000, maxiter=None,
+              plot_interval=None, savename='group_{N}.npz'):
     """Group similar bins in multidimensional feature space.
 
     Initial bins are defined as a rectangular grid in feature space with a grid
@@ -60,7 +61,8 @@ def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
     The hyperparameter sigma controls the relative importance of the feature and
     redshift similarities in the subsequent grouping. Values of dr are normalized
     such that dr=1 corresonds to the full range of each feature, i.e., the grid
-    size along each feature axis.
+    size along each feature axis.  Set sigma to None to treat all bins as having the
+    same feature similarity, and thus not penalize combining disconnected bins.
 
     Redshift similarity is based on the histogram of redshifts associated with each
     feature bin, interpreted as a vector.  When weighted is False, similarity is
@@ -126,18 +128,24 @@ def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
     upper = np.triu(np.ones((nfbin, nfbin)), 1)
 
     # Calculate the normalized Euclidean distance matrix between feature bins.
-    x = np.arange(npct) / (npct - 1)
-    dims = np.meshgrid(*([x] * nfeat), sparse=False, copy=False)
-    r1 = np.stack(dims, axis=-1).reshape(-1, nfeat)
-    r2 = r1.reshape(-1, 1,  nfeat)
-    dr2 = np.sum((r1 - r2) ** 2, axis=-1) / sigma ** 2
-    assert dr2.shape == (nfbin, nfbin)
+    if sigma is None:
+        # Use the sigma -> infinity limit so that all bins are considered to
+        # have equal feature similarity, and there is no penalty for combining
+        # disconnected bins.
+        fsim = np.ones((nfbin, nfbin)) - np.identity(nfbin)
+    else:
+        x = np.arange(npct) / (npct - 1)
+        dims = np.meshgrid(*([x] * nfeat), sparse=False, copy=False)
+        r1 = np.stack(dims, axis=-1).reshape(-1, nfeat)
+        r2 = r1.reshape(-1, 1,  nfeat)
+        dr2 = np.sum((r1 - r2) ** 2, axis=-1) / sigma ** 2
+        assert dr2.shape == (nfbin, nfbin)
 
-    # Calculate the initial feature similarity matrix.
-    # Bins that are sufficiently far apart (relative to sigma) will
-    # have fsim == 0, due to numerical precision, and will therefore
-    # never be grouped.
-    fsim = np.exp(-dr2)
+        # Calculate the initial feature similarity matrix.
+        # Bins that are sufficiently far apart (relative to sigma) will
+        # have fsim == 0, due to numerical precision, and will therefore
+        # never be grouped.
+        fsim = np.exp(-dr2)
 
     # Calculate the initial redshift similarity matrix.
     if weighted:
@@ -171,6 +179,11 @@ def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
         assert active[i1] and active[i2]
         assert grpid[i1] == i1 and grpid[i2] == i2
         assert np.sum(zhist[active]) == ndata
+        if niter % plot_interval == 0:
+            plt.plot(zhist[i1], label=f'i={i1} grp={grpid[i1]} sum={zsum[i1]}')
+            plt.plot(zhist[i2], label=f'i={i2} grp={grpid[i2]} sum={zsum[i2]}')
+            plt.legend(title=f'fsim={fsim[i1,i2]:.5f} zsim={zsim[i1,i2]:.5f}')
+            plt.show()
         # Are we still below the threshold if we combine i1 and i2?
         if zsum[i1] + zsum[i2] <= nmax:
             # Merge i1 and i2 into i1.
