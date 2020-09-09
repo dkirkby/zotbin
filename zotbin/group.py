@@ -156,9 +156,13 @@ def groupbins(features, redshift, zedges, npct, method='weighted', sigma=0.2,
     elif method == 'cosine':
         unit = np.divide(zhist, znorm.reshape(-1, 1), where=znorm.reshape(-1, 1) > 0, out=np.zeros_like(zhist, float))
         zsim = np.einsum('ij,kj->ik', unit, unit)
+    elif method == 'EMD':
+        # https://en.wikipedia.org/wiki/Earth_mover%27s_distance#Computing_the_EMD
+        pdf = np.divide(zhist, zsum.reshape(-1, 1), where=zsum.reshape(-1, 1) > 0, out=np.zeros_like(zhist, float))
+        zsim = np.exp(-np.sum(np.abs(np.cumsum(pdf.reshape(nfbin, 1, nzbin) - pdf, axis=2)), axis=2))
+        zsim -= np.identity(nfbin)
     else:
         raise ValueError(f'Invalid method "{method}".')
-
 
     if np.any(~active):
         inactive = np.where(~active)[0]
@@ -182,7 +186,7 @@ def groupbins(features, redshift, zedges, npct, method='weighted', sigma=0.2,
         assert active[i1] and active[i2]
         assert grpid[i1] == i1 and grpid[i2] == i2
         assert np.sum(zhist[active]) == ndata
-        if niter % plot_interval == 0:
+        if plot_interval is not None and niter % plot_interval == 0:
             plt.plot(zhist[i1], label=f'i={i1} grp={grpid[i1]} sum={zsum[i1]}')
             plt.plot(zhist[i2], label=f'i={i2} grp={grpid[i2]} sum={zsum[i2]}')
             plt.legend(title=f'fsim={fsim[i1,i2]:.5f} zsim={zsim[i1,i2]:.5f}')
@@ -211,6 +215,9 @@ def groupbins(features, redshift, zedges, npct, method='weighted', sigma=0.2,
             elif method == 'cosine':
                 unit[i1] = zhist[i1] / znorm[i1]
                 newzsim = unit.dot(unit[i1])
+            elif method == 'EMD':
+                pdf[i1] = zhist[i1] / zsum[i1]
+                newzsim = np.exp(-np.sum(np.abs(np.cumsum(pdf - pdf[i1], axis=1)), axis=1))
             else:
                 raise ValueError(f'Invalid method "{method}".')
             newzsim[i1] = 0.
