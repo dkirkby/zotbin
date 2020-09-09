@@ -211,8 +211,8 @@ def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
             ngrp -= 1
             if ngrp in ngrp_save:
                 print(f'Finalizing result with {ngrp} groups...')
-                grpid_save, zhist_save, zsim_save = finalize(
-                    grpid, zhist, zsim, zedges, active, sample_bin, redshift, iempty)
+                grpid_save, zhist_save, zsim_save = finalize(grpid, zhist, zsim, active, iempty)
+                assert zhist_save.sum() == ndata
                 if validate:
                     print('Validating saved results...')
                     validate_groups(features, redshift, zedges, fedges, grpid_save, zhist_save)
@@ -240,10 +240,11 @@ def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
         print(f'All groups above nmin={nmin} after {niter} iterations.')
 
 
-def finalize(grpid_in, zhist_in, zsim_in, zedges, active, sample_bin, redshift, iempty):
+def finalize(grpid_in, zhist_in, zsim_in, active, iempty):
+    """Finalize the current state of (grpid, zhist, zsim) by renumbering
+    groups consecutively, sorting by average redshift, and running some checks.
+    Returns new (grpid, zhist, zsim) without modifying any of the inputs.
     """
-    """
-    ndata = len(sample_bin)
     nfbin, nzbin = zhist_in.shape
     grpid = grpid_in.copy()
     # Renumber the groups consecutively and compress the outputs.
@@ -261,11 +262,6 @@ def finalize(grpid_in, zhist_in, zsim_in, zedges, active, sample_bin, redshift, 
         assert bins[0] == idx
         assert active[bins[0]] and not np.any(active[bins[1:]])
         rows[i] = idx
-        grp_bins = np.where(grpid == idx)[0]
-        bin_sel = np.isin(sample_bin, grp_bins)
-        assert bin_sel.shape == (ndata,)
-        grp_hist, _ = np.histogram(redshift[bin_sel], zedges)
-        assert np.array_equal(grp_hist, zhist_in[idx])
         grpid[bins] = i
 
     # Sort the groups in order of increase average redshift.
@@ -278,7 +274,6 @@ def finalize(grpid_in, zhist_in, zsim_in, zedges, active, sample_bin, redshift, 
     if iempty is not None:
         grpid_out[grpid == -1] = -1
     zhist_out = zhist_in[rows]
-    assert zhist_out.sum() == ndata
     zsim_out = zsim_in[np.ix_(rows, rows)]
     assert np.all(np.diag(zsim_out) == 0)
     return grpid_out, zhist_out, zsim_out
