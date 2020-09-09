@@ -409,7 +409,7 @@ def plotfbins(features, npct=20, nhist=100, inset_pct=1, show_edges=True):
         for j in range(i + 1, nfeat):
             ax = axes[j, i]
             hist, _, _ = np.histogram2d(D[i], D[j], [edges[i], edges[j]])
-            ax.imshow(hist, origin='lower', interpolation='none', extent=[0, 100, 0, 100])
+            ax.imshow(hist, origin='lower', interpolation='none', extent=[0, 100, 0, 100], vmin=0, vmax=hist.max())
             ax = axes[i, j]
             ax.hist2d(D[j], D[i], nhist, range=(ranges[j], ranges[i]))
             if show_edges:
