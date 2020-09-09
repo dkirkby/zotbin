@@ -71,7 +71,7 @@ def learn_flow(X, hidden_dim=48, num_hidden=2, num_unit=5,
 
     if interval is not None:
         import matplotlib.pyplot as plt
-        bins = np.linspace(-1.05, 1.05, 111)
+        bins = np.linspace(-0.05, 1.05, 111)
 
     def loss_fn(params, inputs):
         return -log_pdf(params, inputs).mean()
