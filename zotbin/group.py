@@ -261,7 +261,7 @@ def finalize(ngrp, grpid_in, zhist_in, zsim_in, zedges, active, sample_bin, reds
         ids = ids[1:]
     assert ngrp == len(ids), f'ngrp mismatch: {ngrp} != {len(ids)}.'
     if validate:
-        zhist_out = np.empty((ngrp, nzbin), int)
+        zhist_check = np.empty((ngrp, nzbin), int)
     rows = np.empty(ngrp, int)
     for i, idx in enumerate(ids):
         sel = (grpid == idx)
@@ -291,10 +291,10 @@ def finalize(ngrp, grpid_in, zhist_in, zsim_in, zedges, active, sample_bin, reds
     zhist_out = zhist_in[rows]
     assert zhist_out.sum() == ndata
     if validate:
-        assert np.array_equal(zhist, zhist_check[iorder])
+        assert np.array_equal(zhist_out, zhist_check[iorder])
     zsim_out = zsim_in[np.ix_(rows, rows)]
     assert np.all(np.diag(zsim_out) == 0)
-    return grpid, zhist_out, zsim_out
+    return grpid_out, zhist_out, zsim_out
 
 
 def save_groups(fname, zedges, fedges, grpid, zhist, zsim):
