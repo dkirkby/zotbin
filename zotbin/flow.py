@@ -43,8 +43,10 @@ def masked_transform(rng, input_dim, hidden_dim, num_hidden):
     return params, apply_fun
 
 
-def learn_flow(X, hidden_dim=48, num_hidden=2, num_unit=5, num_epochs=100, batch_size=2000, interval=None, seed=123):
-    """
+def learn_flow(X, hidden_dim=48, num_hidden=2, num_unit=5,
+               learning_rate=1e-3, num_epochs=200, batch_size==4000, interval=None, seed=123):
+    """Training with 400K of riz data works well the default args.
+    Make sure to remove samples with undetected flux since these otherwise create a delta function.
     """
     # Preprocess input data.
     scaler = preprocessing.StandardScaler().fit(X)
@@ -69,7 +71,7 @@ def learn_flow(X, hidden_dim=48, num_hidden=2, num_unit=5, num_epochs=100, batch
 
     if interval is not None:
         import matplotlib.pyplot as plt
-        bins = np.linspace(-1.5, 1.5, 101)
+        bins = np.linspace(-1.05, 1.05, 111)
 
     def loss_fn(params, inputs):
         return -log_pdf(params, inputs).mean()
@@ -80,7 +82,7 @@ def learn_flow(X, hidden_dim=48, num_hidden=2, num_unit=5, num_epochs=100, batch
         loss_value, gradients = jax.value_and_grad(loss_fn)(params, inputs)
         return opt_update(i, gradients, opt_state), loss_value
 
-    opt_init, opt_update, get_params = optimizers.adam(step_size=1e-3)
+    opt_init, opt_update, get_params = optimizers.adam(step_size=learning_rate)
     opt_state = opt_init(initial_params)
     root2 = np.sqrt(2.)
 
@@ -106,7 +108,7 @@ def learn_flow(X, hidden_dim=48, num_hidden=2, num_unit=5, num_epochs=100, batch
     def flow_map(Y):
         Y_preproc = scaler.transform(Y)
         Y_normal, _ = bijection_direct(final_params, jnp.array(Y_preproc))
-        return np.array(Y_normal)
-        #Y_uniform = 0.5 * (1 + scipy.special.erf(np.array(Y_normal, np.float64) / root2))
-        #return Y_uniform
+        #return np.array(Y_normal)
+        Y_uniform = 0.5 * (1 + scipy.special.erf(np.array(Y_normal, np.float64) / root2))
+        return Y_uniform
     return flow_map
