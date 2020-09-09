@@ -83,8 +83,9 @@ def jax_optimize(optimizer, initial_params, transform_fun, mixing_matrix, init_d
         return score, opt_state
 
     for stepnum in range(nsteps):
+        params = opt_params(opt_state)
         score, opt_state = take_step(stepnum, opt_state)
-        callback(np.float32(score), opt_params(opt_state))
+        callback(np.float32(score), params)
 
 
 def scipy_optimize(minimize_kwargs, initial_params, transform_fun, mixing_matrix, init_data,
@@ -172,6 +173,7 @@ def optimize(nbin, mixing_matrix, init_data, ntrial=1, transform='softmax', meth
     if plot:
         plt.xlabel('Optimize steps')
         plt.ylabel(metric)
+        plt.show()
 
     # Calculate all 3x2 scores at the best parameters.
     scores = metrics(best_params, transform_fun, mixing_matrix, init_data, gals_per_arcmin2, fsky)
