@@ -42,7 +42,7 @@ def groupinit(features, redshift, zedges, npct=20):
     return fedges, sample_bin, zhist
 
 
-def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
+def groupbins(features, redshift, zedges, npct, method='weighted', sigma=0.2,
               ngrp_save=(400, 300, 200, 150, 100, 75), maxfrac=0.02, minfrac=0.005,
               validate=False, validate_interval=1000, maxiter=None,
               plot_interval=None, savename='group_{N}.npz'):
@@ -148,14 +148,17 @@ def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
         fsim = np.exp(-dr2)
 
     # Calculate the initial redshift similarity matrix.
-    if weighted:
+    if method == 'weighted':
         pairs = zhist.reshape(nfbin, 1, nzbin) + zhist
         pairnorm = np.sqrt(np.sum(pairs ** 2, axis=-1))
         sumnorm = znorm.reshape(nfbin, 1) + znorm
         zsim = np.divide(pairnorm, sumnorm, where=sumnorm > 0, out=np.zeros_like(sumnorm))
-    else:
+    elif method == 'cosine':
         unit = np.divide(zhist, znorm.reshape(-1, 1), where=znorm.reshape(-1, 1) > 0, out=np.zeros_like(zhist, float))
         zsim = np.einsum('ij,kj->ik', unit, unit)
+    else:
+        raise ValueError(f'Invalid method "{method}".')
+
 
     if np.any(~active):
         inactive = np.where(~active)[0]
@@ -199,15 +202,17 @@ def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
             znorm[i1] = np.sqrt(np.sum(zhist[i1] ** 2))
             zsum[i1] += zsum[i2]
             # Calculate the redshift similarity of the merged (i1,i2) with all other bins.
-            if weighted:
+            if method == 'weighted':
                 pairs[i1, :] += zhist[i2]
                 pairs[:, i1] += zhist[i2]
                 i1pairnorm = np.sqrt(np.sum(pairs[i1] ** 2, axis=1))
                 i1sumnorm = znorm + znorm[i1]
                 newzsim = i1pairnorm / i1sumnorm
-            else:
+            elif method == 'cosine':
                 unit[i1] = zhist[i1] / znorm[i1]
                 newzsim = unit.dot(unit[i1])
+            else:
+                raise ValueError(f'Invalid method "{method}".')
             newzsim[i1] = 0.
             newzsim[~active] = 0.
             # Update the full redshift similarity matrix.
@@ -239,7 +244,7 @@ def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
         niter += 1
         if validate and (niter % validate_interval == 0):
             print(f'validating similarity matrices after {niter} iterations')
-            zsim0 = redshift_similarity(zhist, znorm, grpid, active, weighted)
+            zsim0 = redshift_similarity(zhist, znorm, grpid, active, method)
             assert validated(zsim, zsim0)
             fsim0 = feature_similarity(dr2, grpid, active)
             assert validated(fsim, fsim0)
@@ -351,7 +356,7 @@ def feature_similarity(dr2, grpid, active):
     return fsim
 
 
-def redshift_similarity(zhist, znorm, grpid, active, weighted):
+def redshift_similarity(zhist, znorm, grpid, active, method):
     """Calculate the redshift similarity matrix from scratch.
     This is relatively slow so only used to validate faster incremental updates.
     """
@@ -361,12 +366,14 @@ def redshift_similarity(zhist, znorm, grpid, active, weighted):
         idx1 = idx1[0]
         idx2 = idx2[0]
         assert znorm[idx1] > 0 and znorm[idx2] > 0
-        if weighted:
+        if method == 'weighted':
             z12norm = np.sqrt(np.sum((zhist[idx1] + zhist[idx2]) ** 2))
             z12sim = z12norm / (znorm[idx1] + znorm[idx2])
-        else:
+        elif method == 'cosine':
             z12dot = np.sum(zhist[idx1] * zhist[idx2])
             z12sim = z12dot / (znorm[idx1] * znorm[idx2])
+        else:
+            raise ValueError(f'Invalid method "{method}".')
         zsim[idx1, idx2] = z12sim
         zsim[idx2, idx1] = z12sim
     # The similarities of inactive rows and columns should already be zero.
