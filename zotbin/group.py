@@ -43,7 +43,7 @@ def groupinit(features, redshift, zedges, npct=20):
 
 
 def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
-              ngrp_save=(400, 300, 200, 150, 100, 50), maxfrac=0.02, minfrac=0.005,
+              ngrp_save=(400, 300, 200, 150, 100, 75), maxfrac=0.02, minfrac=0.005,
               validate=False, validate_interval=1000, maxiter=None, savename='group_{N}.npz'):
     """Group similar bins in multidimensional feature space.
 
@@ -75,7 +75,7 @@ def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
     respectively, with weights wk = |zk| / (|z1| + |z2|).
 
     Feature bins are grouped iteratively, by combining the pair of groups with the
-    maximum similiarity, until either a minimum number of groups is reached or else
+    maximum similiarity, until either a specified number of groups is reached or else
     all remaining groups are above a minimum sample threshold.  There is also a
     maximum sample threshold, and pairs whose combination would exceed this
     threshold are never combined.
@@ -216,9 +216,10 @@ def groupbins(features, redshift, zedges, npct, weighted=True, sigma=0.2,
                 if validate:
                     print('Validating saved results...')
                     validate_groups(features, redshift, zedges, fedges, grpid_save, zhist_save)
-                fname = savename.format(N=ngrp)
-                save_groups(fname, zedges, fedges, grpid_save, zhist_save, zsim_save)
-                print(f'Saved {ngrp} groups to {fname}')
+                if savename is not None:
+                    fname = savename.format(N=ngrp)
+                    save_groups(fname, zedges, fedges, grpid_save, zhist_save, zsim_save)
+                    print(f'Saved {ngrp} groups to {fname}')
         else:
             # Zero this similiarity but leave i & j eligible for grouping with other bins.
             eligible[i1, i2] = 0.
