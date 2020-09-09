@@ -44,7 +44,7 @@ def masked_transform(rng, input_dim, hidden_dim, num_hidden):
 
 
 def learn_flow(X, hidden_dim=48, num_hidden=2, num_unit=5,
-               learning_rate=1e-3, num_epochs=200, batch_size==4000, interval=None, seed=123):
+               learning_rate=1e-3, num_epochs=200, batch_size=4000, interval=None, seed=123):
     """Training with 400K of riz data works well the default args.
     Make sure to remove samples with undetected flux since these otherwise create a delta function.
     """
