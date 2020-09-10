@@ -126,7 +126,7 @@ def optimize(nbin, mixing_matrix, init_data, ntrial=1, transform='softmax', meth
 
     Returns the best score and corresponding normalized dn/dz weights.
     """
-    if mixing_matrix.sum() != 1:
+    if jnp.abs(mixing_matrix.sum() - 1) > 1e-6:
         raise ValueError('The mixing matrix is not normalized.')
     nzopt, nzcalc = mixing_matrix.shape
 

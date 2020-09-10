@@ -100,21 +100,15 @@ def new_angular_cl(
 
     results = []
     nprobe = len(probes)
-    idx = 0
-    k1 = 0
     for i1 in range(nprobe):
         n1 = probes[i1].n_tracers
         for j1 in range(n1):
             kernel1 = probes[i1].one_kernel(cosmo, z, ell.reshape(-1, 1), slice(j1, j1+1))
-            k2 = k1
             for i2 in range(i1, nprobe):
                 n2 = probes[i2].n_tracers
                 j2min = j1 if i1 == i2 else 0
                 for j2 in range(j2min, n2):
                     kernel2 = probes[i2].one_kernel(cosmo, z, ell.reshape(-1, 1), slice(j2, j2+1))
                     results.append(jnp.sum(f * kernel1 * kernel2, axis=1))
-                    k2 += 1
-                    idx += 1
-            k1 += 1
 
     return jnp.vstack(results)
