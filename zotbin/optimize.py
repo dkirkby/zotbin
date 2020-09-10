@@ -118,7 +118,7 @@ def scipy_optimize(minimize_kwargs, initial_params, transform_fun, mixing_matrix
 
 
 def optimize(nbin, mixing_matrix, init_data, ntrial=1, transform='softmax', method='jax', opt_args={},
-             gals_per_arcmin2=20., fsky=0.25, metric='FOM_DETF_3x2', interval=500, seed=123, plot=True):
+             gals_per_arcmin2=20., fsky=0.25, metric='FOM_DETF_3x2', interval=500, seed=123):
     """Optimize a single 3x2 metric with respect to normalized dn/dz weights calculated from
     unconstrained parameters p as:
 
@@ -139,17 +139,17 @@ def optimize(nbin, mixing_matrix, init_data, ntrial=1, transform='softmax', meth
     else:
         raise ValueError(f'Invalid transform: {transform}.')
 
-    scores = []
+    all_scores = []
     max_score = -1
     best_params = None
     def callback(score, params):
-        nonlocal scores, max_score, best_params
+        nonlocal all_scores, max_score, best_params
         if score > max_score:
             max_score = score
             best_params = params
-        scores.append(score)
-        if len(scores) % interval == 0:
-            print(f'  score={score:.3f} (max={max_score:.3f}) after {len(scores)} steps.')
+        all_scores[-1].append(score)
+        if len(all_scores[-1]) % interval == 0:
+            print(f'  score={score:.3f} (max={max_score:.3f}) after {len(all_scores[-1])} steps.')
 
     opt_args.update(
         transform_fun=transform_fun, mixing_matrix=mixing_matrix, init_data=init_data,
@@ -164,25 +164,19 @@ def optimize(nbin, mixing_matrix, init_data, ntrial=1, transform='softmax', meth
     gen = np.random.RandomState(seed)
     max_score = -1
     for trial in range(ntrial):
+        all_scores.append([])
         params_in = gen.normal(size=pshape)
         optimizer(initial_params=params_in)
-        print(f'trial {trial+1}/{ntrial}: score={scores[-1]:.3f} (max={max_score:.3f}) after {len(scores)} steps.')
-        if plot:
-            plt.plot(scores, 'r-', alpha=0.35)
-        scores.clear()
-    if plot:
-        plt.xlabel('Optimize steps')
-        plt.ylabel(metric)
-        plt.show()
+        print(f'trial {trial+1}/{ntrial}: score={all_scores[-1][-1]:.3f} (max={max_score:.3f}) after {len(all_scores[-1])} steps.')
 
     # Calculate all 3x2 scores at the best parameters.
-    scores = metrics(best_params, transform_fun, mixing_matrix, init_data, gals_per_arcmin2, fsky)
-    scores = {metric: float(value) for metric, value in scores.items()}
+    best_scores = metrics(best_params, transform_fun, mixing_matrix, init_data, gals_per_arcmin2, fsky)
+    best_scores = {metric: float(value) for metric, value in best_scores.items()}
 
     # Convert the best parameters to normalized dn/dz weights.
-    dndz = transform_fun(best_params).dot(mixing_matrix)
+    dndz_bin = transform_fun(best_params).dot(mixing_matrix)
 
-    return scores, dndz
+    return best_scores, dndz_bin, all_scores
 
 
 def plot_dndz(dndz, zedges, gals_per_arcmin2=20.):

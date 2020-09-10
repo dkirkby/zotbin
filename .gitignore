@@ -133,3 +133,4 @@ dmypy.json
 *.npz
 *.png
 *.npy
+results
