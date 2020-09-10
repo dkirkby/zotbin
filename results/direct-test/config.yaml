@@ -1,0 +1,5 @@
+nbin: [2, 4, 6]
+nsteps: 200
+ntrial: 3
+transform: softmax
+metric: FOM_DETF_3x2
