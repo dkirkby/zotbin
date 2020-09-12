@@ -14,45 +14,11 @@ import zotbin.jaxcosmo
 import zotbin.reweight
 
 
-def get_zedges(z, frac=0.02, damin=0.025, damax=0.028, plot=False):
-    zsorted = np.sort(z)
-    asorted = 1 / (zsorted + 1)
-    nfrac = int(np.round(frac * len(z)))
-    hi = 0
-    zedges = [zsorted[0]]
-    last = len(z) - 1
-    while hi < last:
-        lo = hi
-        hi = min(lo + nfrac, last)
-        while (hi < last) and (asorted[hi] >= asorted[lo] - damin):
-            hi += 1
-        while (hi > lo + 1) and (asorted[hi] <= asorted[lo] - damax):
-            hi -= 1
-        zedges.append(zsorted[hi])
-    if (asorted[lo] < asorted[hi] + damin) or (hi - lo + 1 < nfrac):
-        # Merge last bin.
-        zedges[-2] = zedges[-1]
-        zedges = zedges[:-1]
-    zedges = np.array(zedges)
-    print(f'Selected {len(zedges)} edges.')
-    aedges = 1 / (1 + zedges[::-1])
-    if plot:
-        fig, ax = plt.subplots(1, 2, figsize=(12, 5))
-        ax[0].hist(z, range=(zsorted[0], zsorted[-1]), bins=500, alpha=0.5)
-        ax[1].hist(1 / (1 + z), range=(asorted[-1], asorted[0]), bins=500, alpha=0.5)
-        for ze in zedges:
-            ax[0].axvline(ze, color='k', lw=1)
-        for ae in aedges:
-            ax[1].axvline(ae, color='k', lw=1)
-    return zedges
-
-
-def get_zedges_chi(z, nzbin, plot=False):
-    """Alternate version that is equally spaced in comoving distance.
+def get_zedges(zmax, nzbin, zplot=None):
+    """Calculate redshift bin edges equally spaced in comoving distance.
     """
-    z = np.asarray(z)
     # Tabulate comoving distance over a grid spanning the full range of input redshifts.
-    zgrid = np.linspace(0, z.max(), 1000)
+    zgrid = np.linspace(0, zmax, 1000)
     agrid = 1 / (1 + zgrid)
     model = jax_cosmo.parameters.Planck15()
     chi_grid = jax_cosmo.background.radial_comoving_distance(model, agrid)
@@ -60,14 +26,14 @@ def get_zedges_chi(z, nzbin, plot=False):
     chi_edges = np.linspace(0, chi_grid[-1], nzbin + 1)
     zedges = np.empty(nzbin + 1)
     zedges[0] = 0.
-    zedges[-1] = z.max()
+    zedges[-1] = zmax
     zedges[1:-1] = np.interp(chi_edges[1:-1], chi_grid, zgrid)
     aedges = 1 / (1 + zedges)
-    if plot:
+    if zplot is not None:
         plots = {
-            'Redshift $z$': z,
-            'Scale factor $a$': 1 / (1 + z),
-            'Comoving distance $\chi$ [Mpc]': np.interp(z, zgrid, chi_grid)
+            'Redshift $z$': zplot,
+            'Scale factor $a$': 1 / (1 + zplot),
+            'Comoving distance $\chi$ [Mpc]': np.interp(zplot, zgrid, chi_grid)
         }
         fig, axes = plt.subplots(1, 3, figsize=(12, 4))
         for ax, label in zip(axes, plots):
