@@ -37,8 +37,12 @@ def groupinit(features, redshift, zedges, npct=20):
     sample_bin = fdigitize(features, fedges)
     # Histogram the redshift distribution in each feature bin.
     zhist = np.empty((nfbin, nzbin), int)
+    zlo = 0.5 * (zedges[0] + zedges[1])
+    zhi = 0.5 * (zedges[-2] + zedges[-1])
     for i in range(nfbin):
-        zhist[i], _ = np.histogram(redshift[sample_bin == i], zedges)
+        # Add any under/overflow to the end bins.
+        zbin = np.clip(redshift[sample_bin == i], zlo, zhi)
+        zhist[i], _ = np.histogram(zbin, zedges)
     return fedges, sample_bin, zhist
 
 
