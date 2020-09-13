@@ -110,5 +110,5 @@ def learn_flow(X, hidden_dim=48, num_hidden=2, num_unit=5,
         Y_normal, _ = bijection_direct(final_params, jnp.array(Y_preproc))
         #return np.array(Y_normal)
         Y_uniform = 0.5 * (1 + scipy.special.erf(np.array(Y_normal, np.float64) / root2))
-        return Y_uniform
+        return Y_uniform.astype(np.float32)
     return flow_map
