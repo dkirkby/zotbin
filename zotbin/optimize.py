@@ -126,8 +126,8 @@ def optimize(nbin, mixing_matrix, init_data, ntrial=1, transform='softmax', meth
 
     Returns the best score and corresponding normalized dn/dz weights.
     """
-    if jnp.abs(mixing_matrix.sum() - 1) > 1e-6:
-        raise ValueError('The mixing matrix is not normalized.')
+    # Normalize the input mixing matrix.
+    mixing_matrix = jnp.array(mixing_matrix / mixing_matrix.sum())
     nzopt, nzcalc = mixing_matrix.shape
 
     if transform == 'softmax':
@@ -173,10 +173,11 @@ def optimize(nbin, mixing_matrix, init_data, ntrial=1, transform='softmax', meth
     best_scores = metrics(best_params, transform_fun, mixing_matrix, init_data, gals_per_arcmin2, fsky)
     best_scores = {metric: float(value) for metric, value in best_scores.items()}
 
-    # Convert the best parameters to normalized dn/dz weights.
-    dndz_bin = transform_fun(best_params).dot(mixing_matrix)
+    # Convert the best parameters to normalized weights and per-bin dn/dz.
+    weights = transform_fun(best_params)
+    dndz_bin = weights.dot(mixing_matrix)
 
-    return best_scores, dndz_bin, all_scores
+    return best_scores, np.array(weights), np.array(dndz_bin), all_scores
 
 
 def plot_dndz(dndz, zedges, gals_per_arcmin2=20.):
