@@ -488,3 +488,25 @@ def plotzgrp(zhist, zedges=None, stretch=4, sort=False, figsize=(10,5)):
         plt.fill_between(zc, dndz + dy, dy, facecolor=(1, 1, 1, 0.75), edgecolor=(1, 0, 0, 0.5), lw=1)
     plt.gca().axis('off')
     plt.tight_layout()
+
+
+def assign_bins(feature_grp, weights, seed=1):
+    gen = np.random.RandomState(seed)
+    bin_idx = np.full(len(feature_grp), -1, int)
+    # Calculate the CDF for mapping each group to each output bins.
+    cdf = np.cumsum(weights, axis=0)
+    cdf /= cdf[-1]
+    # Loop over groups.
+    for group in np.unique(feature_grp):
+        if group == -1:
+            # Do not use galaxies outside the training feature space.
+            continue
+        sel = (feature_grp == group)
+        nsel = np.count_nonzero(sel)
+        # Randomly assign galaxies to output bins.
+        u = gen.uniform(size=nsel)
+        bin_idx[sel] = np.searchsorted(cdf[:, group], u)
+        ##print(f'group {group} nsel={nsel}')
+        ##print(weights[:, group])
+        ##print(np.bincount(bin_idx[sel], minlength=self.opt['bins'])/nsel)
+    return bin_idx
