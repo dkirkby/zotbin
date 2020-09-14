@@ -1,4 +1,6 @@
+import os
 import hashlib
+import urllib.request
 
 import numpy as np
 
@@ -54,6 +56,6 @@ def get_file(name, destdir='.',
                 if frac >= next_report_frac:
                     print(f'...downloaded {100 * frac:.0f}%', flush=True)
                     next_report_frac += progress_report_frac
-            urlretrieve(src, dest, reporthook=progress)
+            urllib.request.urlretrieve(src, dest, reporthook=progress)
     assert os.path.exists(dest)
     return dest
