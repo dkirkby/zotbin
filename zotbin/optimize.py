@@ -33,27 +33,34 @@ def extend_vector(p):
 extend_transform = jax.jit(jax.vmap(extend_vector, in_axes=1, out_axes=1))
 
 
-@functools.partial(jax.jit, static_argnums=(1,))
-def metrics(params, transform_fun, mixing_matrix, init_data, gals_per_arcmin2, fsky):
+@functools.partial(jax.jit, static_argnums=(1,6))
+def metrics(params, transform_fun, mixing_matrix, init_data, gals_per_arcmin2, fsky, independent):
     """Calculate the 3x2 metrics for the specified parameters.
     Assertions are commented out below to allow JIT compilation.
     All optimizers below use this entry point for their objective function.
     """
     ##assert mixing_matrix.sum() == 1
-    # Transform the unbounded input parameters to weights normalized over columns.
-    transformed = transform_fun(params)
-    ##assert np.all(transformed.sum(axis=0) == 1)
-    # Apply the mixing matrix to obtain values of 1/N dn[i]/dz[j].
-    dndz = jnp.dot(transformed, mixing_matrix)
-    ##assert dndz.sum() == 1
-    # Use the same redshift bins for both probes.
-    probe_dndz = jnp.array([dndz, dndz])
+    if independent:
+        # The number density and weak lensing probes have independent binning.
+        split = params.shape[0] // 2
+        dndz1 = jnp.dot(transform_fun(params[:split]), mixing_matrix)
+        dndz2 = jnp.dot(transform_fun(params[split:]), mixing_matrix)
+        probe_dndz = jnp.array([dndz1, dndz2])
+    else:
+        # Transform the unbounded input parameters to weights normalized over columns.
+        transformed = transform_fun(params)
+        ##assert np.all(transformed.sum(axis=0) == 1)
+        # Apply the mixing matrix to obtain values of 1/N dn[i]/dz[j].
+        dndz = jnp.dot(transformed, mixing_matrix)
+        ##assert dndz.sum() == 1
+        # Use the same redshift bins for both probes.
+        probe_dndz = jnp.array([dndz, dndz])
     # Calculate the 3x2 SNR, FOM, FOM_DETF.
     return zotbin.reweight.reweighted_metrics(probe_dndz, *init_data[1:], gals_per_arcmin2, fsky)
 
 
 def jax_optimize(optimizer, initial_params, transform_fun, mixing_matrix, init_data,
-                 gals_per_arcmin2, fsky, metric, callback, nsteps=100):
+                 gals_per_arcmin2, fsky, independent, metric, callback, nsteps=100):
     """Optimize weights wrt parameterized dndz weights using jax.
 
     Should normally be used via the driver :func:`optimize`.
@@ -68,7 +75,7 @@ def jax_optimize(optimizer, initial_params, transform_fun, mixing_matrix, init_d
     e.g. ``optimizers.sgd(learning_rate)``.
     """
     def score(p):
-        return metrics(p, transform_fun, mixing_matrix, init_data,  gals_per_arcmin2, fsky)[metric]
+        return metrics(p, transform_fun, mixing_matrix, init_data,  gals_per_arcmin2, fsky, independent)[metric]
 
     score_and_grads = jax.jit(jax.value_and_grad(score))
 
@@ -89,7 +96,7 @@ def jax_optimize(optimizer, initial_params, transform_fun, mixing_matrix, init_d
 
 
 def scipy_optimize(minimize_kwargs, initial_params, transform_fun, mixing_matrix, init_data,
-                   gals_per_arcmin2, fsky, metric, callback, scale=-1.):
+                   gals_per_arcmin2, fsky, independent, metric, callback, scale=-1.):
     """Optimize weights wrt parameterized dndz weights using scipy.
 
     Should normally be used via the driver :func:`optimize`.
@@ -101,9 +108,8 @@ def scipy_optimize(minimize_kwargs, initial_params, transform_fun, mixing_matrix
     """
     pshape = initial_params.shape
 
-    @jax.jit
     def score(p):
-        return metrics(p, transform_fun, mixing_matrix, init_data,  gals_per_arcmin2, fsky)[metric]
+        return metrics(p, transform_fun, mixing_matrix, init_data,  gals_per_arcmin2, fsky, independent)[metric]
 
     score_and_grads = jax.jit(jax.value_and_grad(score))
 
@@ -118,7 +124,7 @@ def scipy_optimize(minimize_kwargs, initial_params, transform_fun, mixing_matrix
 
 
 def optimize(nbin, mixing_matrix, init_data, ntrial=1, transform='softmax', method='jax', opt_args={},
-             gals_per_arcmin2=20., fsky=0.25, metric='FOM_DETF_3x2', interval=500, seed=123):
+             gals_per_arcmin2=20., fsky=0.25, independent=False, metric='FOM_DETF_3x2', interval=500, seed=123):
     """Optimize a single 3x2 metric with respect to normalized dn/dz weights calculated from
     unconstrained parameters p as:
 
@@ -138,6 +144,9 @@ def optimize(nbin, mixing_matrix, init_data, ntrial=1, transform='softmax', meth
         pshape = (nbin - 1, nzopt)
     else:
         raise ValueError(f'Invalid transform: {transform}.')
+    if independent:
+        # Double the number of parameters if g,w have independent bins.
+        pshape = (2 * pshape[0], nzopt)
 
     all_scores = []
     max_score = -1
@@ -153,7 +162,8 @@ def optimize(nbin, mixing_matrix, init_data, ntrial=1, transform='softmax', meth
 
     opt_args.update(
         transform_fun=transform_fun, mixing_matrix=mixing_matrix, init_data=init_data,
-        gals_per_arcmin2=gals_per_arcmin2, fsky=fsky, metric=metric, callback=callback)
+        gals_per_arcmin2=gals_per_arcmin2, fsky=fsky, independent=independent,
+        metric=metric, callback=callback)
     if method == 'jax':
         optimizer = functools.partial(jax_optimize, **opt_args)
     elif method == 'scipy':
@@ -170,17 +180,26 @@ def optimize(nbin, mixing_matrix, init_data, ntrial=1, transform='softmax', meth
         print(f'trial {trial+1}/{ntrial}: score={all_scores[-1][-1]:.3f} (max={max_score:.3f}) after {len(all_scores[-1])} steps.')
 
     # Calculate all 3x2 scores at the best parameters.
-    best_scores = metrics(best_params, transform_fun, mixing_matrix, init_data, gals_per_arcmin2, fsky)
+    best_scores = metrics(best_params, transform_fun, mixing_matrix, init_data, gals_per_arcmin2, fsky, independent)
     best_scores = {metric: float(value) for metric, value in best_scores.items()}
 
     # Convert the best parameters to normalized weights and per-bin dn/dz.
-    weights = transform_fun(best_params)
-    dndz_bin = weights.dot(mixing_matrix)
+    if independent:
+        split = best_params.shape[0] // 2
+        weights1 = transform_fun(best_params[:split])
+        dndz_bin1 = weights1.dot(mixing_matrix)
+        weights2 = transform_fun(best_params[split:])
+        dndz_bin2 = weights2.dot(mixing_matrix)
+        weights = np.array([weights1, weights2])
+        dndz_bin = np.array([dndz_bin1, dndz_bin2])
+    else:
+        weights = transform_fun(best_params)
+        dndz_bin = weights.dot(mixing_matrix)
 
-    return best_scores, np.array(weights), np.array(dndz_bin), all_scores
+    return best_scores, np.asarray(weights), np.asarray(dndz_bin), all_scores
 
 
-def plot_dndz(dndz, zedges, gals_per_arcmin2=20.):
+def plot_dndz(dndz, zedges, gals_per_arcmin2=20., legend=True):
     """Plot the normalized dndz from an optimization.
 
     Should normally use zedges=init_data[0].
@@ -188,11 +207,21 @@ def plot_dndz(dndz, zedges, gals_per_arcmin2=20.):
     zc = 0.5 * (zedges[1:] + zedges[:-1])
     dz = np.diff(zedges)
     norm = gals_per_arcmin2 * 0.1 / dz
-    for i, dndz_bin in enumerate(dndz):
-        color = f'C{i}'
-        plt.hist(zc, zedges, weights=dndz_bin * norm, histtype='stepfilled', alpha=0.25, color=color)
-        plt.hist(zc, zedges, weights=dndz_bin * norm, histtype='step', alpha=0.75, color=color)
-    plt.hist(zc, zedges, weights=dndz.sum(axis=0) * norm, histtype='step', color='k')
+    if dndz.ndim == 2:
+        dndz = np.expand_dims(dndz, 0)
+    nbin = dndz.shape[1]
+    for ibin in range(nbin):
+        color = f'C{ibin}'
+        plt.hist(zc, zedges, weights=dndz[0, ibin] * norm, histtype='stepfilled', alpha=0.25, color=color)
+        plt.hist(zc, zedges, weights=dndz[-1, ibin] * norm, histtype='step', alpha=0.75, color=color)
+    plt.hist(zc, zedges, weights=dndz[0].sum(axis=0) * norm, histtype='step', color='k')
     plt.xlabel('Redshift $z$')
     plt.xlim(zedges[0], zedges[-1])
     plt.ylabel('Galaxies / ($\Delta z=0.1$) / sq.arcmin.')
+    if legend:
+        if len(dndz) == 1:
+            plt.fill_between([], [], edgecolor='C0', facecolor='C0', label='g+w probes', alpha=0.5)
+        else:
+            plt.fill_between([], [], edgecolor='none', facecolor='C0', label='w probe', alpha=0.25)
+            plt.fill_between([], [], edgecolor='C0', facecolor='none', label='g probe', alpha=0.75)
+        plt.legend()
