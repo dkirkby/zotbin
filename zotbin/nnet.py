@@ -7,7 +7,7 @@ from jax.experimental import stax, optimizers
 from zotbin.reweight import reweighted_metrics
 
 
-def create_model(nhidden, nlayer):
+def create_model(nbin, nhidden, nlayer):
     layers = []
     for i in range(nlayer):
         layers.extend([
@@ -36,7 +36,7 @@ def learn_nnet(nbin, X, z, init_data, trainfrac=0.5, nhidden=64, nlayer=2, ntria
     histbins = jax.vmap(hist1bin, in_axes=(None, 1), out_axes=0)
 
     # Build the network model.
-    init_fun, apply_fun = create_model(nhidden, nlayer)
+    init_fun, apply_fun = create_model(nbin, nhidden, nlayer)
 
     def get_dndz(params, Xb, zb):
         # Get normalized weights from the network model.
@@ -111,24 +111,6 @@ def learn_nnet(nbin, X, z, init_data, trainfrac=0.5, nhidden=64, nlayer=2, ntria
     # Convert the best parameters to normalized dndz weights.
     dndz_bin = get_dndz(best_params, Xtrain, ztrain)
 
-    return best_scores, weights, dndz_bin, all_scores, best_params
+    apply = lambda X: apply_fun(best_params, X)
 
-
-def apply_nnet(X, params, seed, nhidden=64, nlayer=2):
-
-    # Build the network model.
-    _, apply_fun = create_model(nhidden, nlayer)
-
-    # Calculate the weights for each sample.
-    weights = apply_fun(params, X)
-    print('weights', weights.shape, weights.sum(axis=0))
-
-    # Randomly assign each sample to an output bin.
-    cdf = np.cumsum(weights, axis=0)
-    cdf /= cdf[-1]
-    gen = np.random.RandomState(seed)
-    u = np.uniform(size=len(X))
-    idx = np.empty(len(X), int)
-    for i in range(len(X)):
-        idx[i] = np.searchsorted(cdf[:, i], u[i])
-    return idx
+    return best_scores, weights, dndz_bin, all_scores, apply
