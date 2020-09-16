@@ -211,7 +211,7 @@ def plot_dndz(dndz, zedges, gals_per_arcmin2=20., legend=True):
         dndz = np.expand_dims(dndz, 0)
     nbin = dndz.shape[1]
     for ibin in range(nbin):
-        color = f'C{ibin}'
+        color = f'C{ibin % 10}'
         plt.hist(zc, zedges, weights=dndz[0, ibin] * norm, histtype='stepfilled', alpha=0.25, color=color)
         plt.hist(zc, zedges, weights=dndz[-1, ibin] * norm, histtype='step', alpha=0.75, color=color)
     plt.hist(zc, zedges, weights=dndz[0].sum(axis=0) * norm, histtype='step', color='k')
