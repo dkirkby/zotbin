@@ -3,7 +3,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="zotbin",
-    version="0.0.1",
+    version="0.0.2dev",
     author="David Kirkby",
     author_email="dkirkby@uci.edu",
     description="Tomographic binning for cosmology",
